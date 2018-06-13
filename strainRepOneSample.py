@@ -109,6 +109,7 @@ def run_strain_profiler(bam, positions, min_coverage = 5, min_snp = 3):
     #Set up variables
     raw_counts_data = defaultdict(dict) # Set up SNP table
     alpha_snvs = 0
+    total_positions = 0
     read_to__snvs = defaultdict(list)
     snvs_to_reads = defaultdict(list)
     snvs_frequencies = defaultdict(int)
@@ -140,6 +141,7 @@ def run_strain_profiler(bam, positions, min_coverage = 5, min_snp = 3):
 
             consensus = False
             if counts:
+                total_positions += 1
                 consensus = call_snv_site(counts, min_cov = min_coverage, min_snp = min_snp)
                 total_read_length += sum(counts)
 
@@ -171,7 +173,10 @@ def run_strain_profiler(bam, positions, min_coverage = 5, min_snp = 3):
                         snp = position + ":" + C2P[nucl_count]
                         snvs_frequencies[snp] = freq
                     nucl_count += 1
-
+                    
+    print("Total number of reads: " + str(len(reads_to_snvs.keys())))
+    print("Total SNVs: " + str(alpha_snvs))
+    print("Total number of positions looked at: " + str(total_positions))
     return {'alpha_snvs': alpha_snvs,
             'total_read_length': total_read_length,
             'snvs_frequencies':snvs_frequencies,
