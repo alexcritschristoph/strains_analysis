@@ -20,6 +20,7 @@ COG0006,14_0903_02_20cm_scaffold_5308,6827,7180
 ```
 
 ### TODO
+0. Upload code to GitHub
 1. Add max coverage?
 2. SNP-frequency x SNVs per read matrix
 3. Does this actually work?
