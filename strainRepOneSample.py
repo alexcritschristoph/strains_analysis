@@ -224,12 +224,12 @@ def main():
         print("ERROR: SECOND ARGUMENT NEEDS TO BE THE FASTA")
         sys.exit(1)
 
-    if len(sys.argv) > 3:
-        genes = sys.argv[3]
+    myargs = getopts(sys.argv)
+    
+    if '-g' in myargs:
+        genes = myargs['-g']
     else:
         genes = None
-
-    myargs = getopts(sys.argv)
     if '-c' in myargs:  
         min_coverage = myargs['-c']
     else:
