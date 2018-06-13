@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 #    DON'T CALL IT THAT
 import pysam
 from Bio import SeqIO
