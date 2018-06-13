@@ -231,11 +231,11 @@ def main():
     else:
         genes = None
     if '-c' in myargs:  
-        min_coverage = myargs['-c']
+        min_coverage = int(myargs['-c'])
     else:
         min_coverage = 5
     if '-s' in myargs:  
-        min_snp = myargs['-s']
+        min_snp = int(myargs['-s'])
     else:
         min_snp = 3
     positions = _get_scaffold_positions(genes, fasta)
