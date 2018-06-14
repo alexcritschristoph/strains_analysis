@@ -206,9 +206,9 @@ def write_tables(fasta, bam, results):
         f.write(genome + "\t" + sample + "\t" + snp + "\t" + str(results['snvs_frequencies'][snp]) +"\n")
     f.close()
 
-    f = open('./' + genome + ".freq", "w+")
+    f = open('./' + genome + ".data", "w+")
     f.write("Genome\tSNVs\tTotal Read Length\n")
-    f.write(genome + "\t" + results['alpha_snvs'] + "\t" + results['total_read_length'])
+    f.write(genome + "\t" + str(results['alpha_snvs']) + "\t" + str(results['total_read_length']))
     f.close()
 
 def main():
