@@ -174,7 +174,7 @@ def run_strain_profiler(bam, positions, min_coverage = 5, min_snp = 3):
                         snvs_frequencies[snp] = freq
                     nucl_count += 1
                     
-    print("Total number of reads: " + str(len(reads_to_snvs.keys())))
+    print("Total number of reads: " + str(len(read_to_snvs.keys())))
     print("Total SNVs: " + str(alpha_snvs))
     print("Total number of positions looked at: " + str(total_positions))
     return {'alpha_snvs': alpha_snvs,
