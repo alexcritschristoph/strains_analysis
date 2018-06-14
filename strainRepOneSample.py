@@ -110,7 +110,7 @@ def run_strain_profiler(bam, positions, min_coverage = 5, min_snp = 3):
     raw_counts_data = defaultdict(dict) # Set up SNP table
     alpha_snvs = 0
     total_positions = 0
-    read_to__snvs = defaultdict(list)
+    read_to_snvs = defaultdict(list)
     snvs_to_reads = defaultdict(list)
     snvs_frequencies = defaultdict(int)
     total_read_length = 0
@@ -157,7 +157,7 @@ def run_strain_profiler(bam, positions, min_coverage = 5, min_snp = 3):
                                 #if value is not the consensus value
                                 if val != consensus and counts[P2C[val]] > min_snp:
                                     #this is a variant read!
-                                    read_to__snvs[read_name].append(position + ":" + val)
+                                    read_to_snvs[read_name].append(position + ":" + val)
                                     snvs_to_reads[position+":"+val].append(read_name)
                                     alpha_snvs += 1
 
@@ -180,7 +180,7 @@ def run_strain_profiler(bam, positions, min_coverage = 5, min_snp = 3):
     return {'alpha_snvs': alpha_snvs,
             'total_read_length': total_read_length,
             'snvs_frequencies':snvs_frequencies,
-            'read_to__snvs': read_to__snvs,
+            'read_to_snvs': read_to_snvs,
             'snvs_to_reads':snvs_to_reads
         }
     # TO DO
@@ -196,8 +196,8 @@ def write_tables(fasta, bam, results):
     #Number of alpha svs per read
     f = open('./' + genome + ".reads", "w+")
     f.write("Genome\tSample\tRead\tCount\n")
-    for read in results['read_to__snvs']:
-        f.write(genome + "\t" + sample + "\t" + read + "\t" + str(len(results['read_to__snvs'][read])) +"\n")
+    for read in results['read_to_snvs']:
+        f.write(genome + "\t" + sample + "\t" + read + "\t" + str(len(results['read_to_snvs'][read])) +"\n")
     f.close()
 
     f = open('./' + genome + ".freq", "w+")
