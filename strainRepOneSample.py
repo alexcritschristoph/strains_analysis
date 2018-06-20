@@ -8,6 +8,9 @@ import math
 import numpy as np
 from tqdm import tqdm
 import sys
+import pandas as pd
+import cPickle
+import csv
 
 def entropy2(counts):
     probs = []
@@ -75,141 +78,215 @@ def _get_base_counts(pileupcolumn, minimum_mapq = 0, pair_mapqs = {}):
     else:
         return False
 
-def _get_scaffold_positions(gene_list = None, fasta_file = None):
-    ''' Returns a list of windows to record SNVs in'''
+class SNVdata:
 
-    if not fasta_file and not gene_list:
-        print("ERROR: REQUIRED TO SUPPLY FASTA or GENE FILE")
-        sys.exit(1)
-    
-    if gene_list:
-        f = open(gene_list)
-        positions = []
-        for line in f.readlines():
-            positions.append([line.split(",")[1],int(line.split(",")[2]),int(line.split(",")[3])])
-        f.close()
-    else:
-        positions = []
-        for rec in SeqIO.parse(fasta_file, "fasta"):
-            positions.append([str(rec.id),1,len(rec.seq)])
+    # The class "constructor" - It's actually an initializer 
+    def __init__(self):
+        self.fasta = ""
+        self.bam = ""
+        self.results = False
+        self.positions = []
+        self.snv_table = None
+        self.reads_table = None
+        self.alpha_snvs = None
+        self.read_to_snvs = None
+        self.snvs_frequencies = None
+        self.snvs_to_reads = None
+        self.total_read_length = None
+        self.total_positions = None
+        self.total_snv_sites = None 
+        self.non_consensus_snvs = None
 
-    return positions
+    def save(self):
+        if self.results:
+            # Generate tables
+            print("Printing to tables.")
+            sample = self.bam.split("/")[-1].split(".bam")[0]
+            genome = self.fasta.split("/")[-1].split(".")[0]
+            print(genome)
+            self.snv_table.to_csv(genome + ".reads",sep='\t', quoting=csv.QUOTE_NONE)
+            self.reads_table.to_csv(genome + ".freq",sep='\t', quoting=csv.QUOTE_NONE)
 
+            f = open('./' + genome + ".data", "w+")
+            f.write("Genome\tSNVs\tTotal Read Length\n")
+            f.write(genome + "\t" + str(self.alpha_snvs) + "\t" + str(self.total_read_length))
+            f.close()
 
-def run_strain_profiler(bam, positions, min_coverage = 5, min_snp = 3):
+            f = open(genome + ".data", 'wb')
+            cPickle.dump(self.__dict__, f, 2)
+            f.close()
+        else:
+            print("No data to save.")
 
+    def load(self, name):
+        self.__dict__.clear()
+        f = open(name + ".data", 'rb')
+        tmp_dict = cPickle.load(f)
+        f.close()          
 
-    minimum_mapq = 2
-    P2C = {'A':0, 'C':1, 'T':2, 'G':3}
-    C2P = {0:'A', 1:'C', 2:'T', 3:'G'}
-    global mate_pair_mappings
+        self.__dict__.update(tmp_dict) 
 
-    # Where will we be looking at SNPs?
-
-    #Set up variables
-    raw_counts_data = defaultdict(dict) # Set up SNP table
-    alpha_snvs = 0
-    total_positions = 0
-    read_to_snvs = defaultdict(list)
-    snvs_to_reads = defaultdict(list)
-    snvs_frequencies = defaultdict(int)
-    total_read_length = 0
-    ## ##################
-    ## START READING BAM
-
-    samfile = pysam.AlignmentFile(bam)
-    sample = bam.split("/")[-1].split(".bam")[0]
-
-    print("READING BAM: " + bam.split("/")[-1])
-
-    #Get mapping quality for paired reads
-    #assumes that paired reads have the same "query name"
-    #Is this a good assumption?
-    pair_mapqs = defaultdict(int)
-    for gene in tqdm(positions, desc='Getting read pairs: '):
-        for read in samfile.fetch(gene[0], gene[1], gene[2]):
-            if pair_mapqs[read.query_name] < read.mapping_quality:
-                pair_mapqs[read.query_name] = read.mapping_quality
-
-    ## Start looping through each gene region
-    for gene in tqdm(positions, desc='Finding SNVs ...'):
-        scaff = gene[0]
-        for pileupcolumn in samfile.pileup(scaff, gene[1], gene[2], stepper = 'nofilter'):
-            #is this position an SNV?
-            position = scaff + "_" + str(pileupcolumn.pos)
-            counts = _get_base_counts(pileupcolumn, minimum_mapq = minimum_mapq, pair_mapqs = pair_mapqs)
-
-            consensus = False
-            if counts:
-                total_positions += 1
-                consensus = call_snv_site(counts, min_cov = min_coverage, min_snp = min_snp)
-                total_read_length += sum(counts)
-
-            if consensus:
-                #there's an SNV at this site
-                # add to SNV frequencies
-                for pileupread in pileupcolumn.pileups:
-                    read_name = pileupread.alignment.query_name
-                    if not pileupread.is_del and not pileupread.is_refskip:
-                        if pileupread.alignment.query_qualities[pileupread.query_position] >= 30 and pair_mapqs[read_name] >= minimum_mapq:
-                            try:
-                                val = pileupread.alignment.query_sequence[pileupread.query_position]
-                                #if value is not the consensus value
-                                if val != consensus and counts[P2C[val]] > min_snp:
-                                    #this is a variant read!
-                                    read_to_snvs[read_name].append(position + ":" + val)
-                                    snvs_to_reads[position+":"+val].append(read_name)
-                                    alpha_snvs += 1
-
-                            except KeyError: # This would be like an N or something not A/C/T/G
-                                pass
+    def get_scaffold_positions(self, gene_list = None, fasta_file = None):
+        ''' Returns a list of windows to record SNVs in'''
+        if not fasta_file and not gene_list:
+            print("ERROR: REQUIRED TO SUPPLY FASTA or GENE FILE")
+            sys.exit(1)
+        
+        if gene_list:
+            f = open(gene_list)
+            for line in f.readlines():
+                self.positions.append([line.split(",")[1],int(line.split(",")[2]),int(line.split(",")[3])])
+            f.close()
+        else:
+            for rec in SeqIO.parse(fasta_file, "fasta"):
+                self.positions.append([str(rec.id),1,len(rec.seq)])
+        self.fasta = fasta_file
 
 
-                freqs = {}
-                nucl_count = 0 
-                for nucl in counts:
-                    if nucl > min_snp:
-                        freq = float(nucl) / float(sum(counts))
-                        snp = position + ":" + C2P[nucl_count]
-                        snvs_frequencies[snp] = freq
-                    nucl_count += 1
-                    
-    print("Total number of reads: " + str(len(read_to_snvs.keys())))
-    print("Total SNVs: " + str(alpha_snvs))
-    print("Total number of positions looked at: " + str(total_positions))
-    return {'alpha_snvs': alpha_snvs,
-            'total_read_length': total_read_length,
-            'snvs_frequencies':snvs_frequencies,
-            'read_to_snvs': read_to_snvs,
-            'snvs_to_reads':snvs_to_reads
-        }
-    # TO DO
-    # Link reads
+
+    def run_strain_profiler(self, bam, min_coverage = 5, min_snp = 3):
 
 
-def write_tables(fasta, bam, results):
+        minimum_mapq = 2
+        P2C = {'A':0, 'C':1, 'T':2, 'G':3}
+        C2P = {0:'A', 1:'C', 2:'T', 3:'G'}
+        global mate_pair_mappings
 
-    # Generate tables
-    print("*** PRINTING TABLES ***")
-    sample = bam.split("/")[-1].split(".bam")[0]
-    genome = fasta.split("/")[-1].split(".")[0]
-    #Number of alpha svs per read
-    f = open('./' + genome + ".reads", "w+")
-    f.write("Genome\tSample\tRead\tCount\n")
-    for read in results['read_to_snvs']:
-        f.write(genome + "\t" + sample + "\t" + read + "\t" + str(len(results['read_to_snvs'][read])) +"\n")
-    f.close()
+        # Where will we be looking at SNPs?
 
-    f = open('./' + genome + ".freq", "w+")
-    f.write("Genome\tSample\tSNV\tFrequency\n")
-    for snp in results['snvs_frequencies']:
-        f.write(genome + "\t" + sample + "\t" + snp + "\t" + str(results['snvs_frequencies'][snp]) +"\n")
-    f.close()
+        #Set up variables
+        raw_counts_data = defaultdict(dict) # Set up SNP table
+        alpha_snvs = 0
+        total_positions = 0
+        read_to_snvs = defaultdict(list)
+        snvs_to_reads = defaultdict(list)
+        snvs_frequencies = defaultdict(int)
+        total_read_length = 0
+        total_snv_sites = 0
+        non_consensus_snvs = []
+        ## ##################
+        ## START READING BAM
 
-    f = open('./' + genome + ".data", "w+")
-    f.write("Genome\tSNVs\tTotal Read Length\n")
-    f.write(genome + "\t" + str(results['alpha_snvs']) + "\t" + str(results['total_read_length']))
-    f.close()
+        samfile = pysam.AlignmentFile(bam)
+        sample = bam.split("/")[-1].split(".bam")[0]
+
+        print("READING BAM: " + bam.split("/")[-1])
+
+        #Get mapping quality for paired reads
+        #assumes that paired reads have the same "query name"
+        #Is this a good assumption?
+        pair_mapqs = defaultdict(int)
+        for gene in tqdm(self.positions, desc='Getting read pairs: '):
+            for read in samfile.fetch(gene[0], gene[1], gene[2]):
+                if pair_mapqs[read.query_name] < read.mapping_quality:
+                    pair_mapqs[read.query_name] = read.mapping_quality
+
+        ## Start looping through each gene region
+        for gene in tqdm(self.positions[0:10], desc='Finding SNVs ...'):
+            scaff = gene[0]
+            for pileupcolumn in samfile.pileup(scaff, gene[1], gene[2], stepper = 'nofilter'):
+                #is this position an SNV?
+                position = scaff + "_" + str(pileupcolumn.pos)
+                counts = _get_base_counts(pileupcolumn, minimum_mapq = minimum_mapq, pair_mapqs = pair_mapqs)
+
+                consensus = False
+                if counts:
+                    total_positions += 1
+                    consensus = call_snv_site(counts, min_cov = min_coverage, min_snp = min_snp)
+                    total_read_length += sum(counts)
+
+                if consensus:
+                    #there's an SNV at this site
+                    total_snv_sites += 1
+
+                    # add to SNV frequencies
+                    for pileupread in pileupcolumn.pileups:
+                        read_name = pileupread.alignment.query_name
+                        if not pileupread.is_del and not pileupread.is_refskip:
+                            if pileupread.alignment.query_qualities[pileupread.query_position] >= 30 and pair_mapqs[read_name] >= minimum_mapq:
+                                try:
+                                    val = pileupread.alignment.query_sequence[pileupread.query_position]
+                                    #if value is not the consensus value
+                                    if counts[P2C[val]] >= min_snp:
+                                        #this is a variant read!
+                                        read_to_snvs[read_name].append(position + ":" + val)
+                                        snvs_to_reads[position+":"+val].append(read_name)
+                                        if val != consensus:
+                                            alpha_snvs += 1
+                                            if position + ":" + val not in non_consensus_snvs:
+                                                non_consensus_snvs.append(position + ":" + val)
+
+                                except KeyError: # This would be like an N or something not A/C/T/G
+                                    pass
+
+
+                    freqs = {}
+                    nucl_count = 0 
+                    for nucl in counts:
+                        if nucl >= min_snp:
+                            freq = float(nucl) / float(sum(counts))
+                            snp = position + ":" + C2P[nucl_count]
+                            snvs_frequencies[snp] = freq
+                        nucl_count += 1
+                        
+        #Calculate SNP per read, Frequencies intersection 
+        print("Calculating frequency - SNVs per read intersection...")
+        snv_table = defaultdict(list)
+        for snv in snvs_frequencies:
+            reads = snvs_to_reads[snv]
+            if len(reads) != 0:
+                snvs_per_read_mean = 0.0
+                for read in reads:
+                    snvs_per_read_mean += len(read_to_snvs[read])
+                snvs_per_read_mean = snvs_per_read_mean / len(reads)
+                snv_table['SNV'].append(snv)
+                snv_table['freq'].append(snvs_frequencies[snv])
+                snv_table['SNVs-per-read'].append(snvs_per_read_mean)
+            else:
+                print("ERROR AT SNV: " + snv)
+        snv_table = pd.DataFrame(snv_table)
+        #Convert SNPs per read dictionary to Pandas DF
+        reads_table = defaultdict(list)
+        for read in read_to_snvs:
+            reads_table['read'].append(read)
+            reads_table['snvs'].append(str(len(read_to_snvs[read])))
+        reads_table = pd.DataFrame(reads_table)
+
+
+        # Calculate SNP linkage network
+        # print("Calculating SNV linkage network...")
+        # for snv in snvs_frequencies:
+        #     reads = snvs_to_reads[snv]
+        #     for read in reads:
+
+
+        # Final statistics
+        print("Total SNVs-sites: " + str(total_snv_sites))
+        print("Total SNV-bases: " + str(alpha_snvs))
+        print("Total sites: " + str(total_positions))
+        print("Total number of bases: " + str(total_read_length))
+
+        self.total_read_length = total_read_length
+        self.alpha_snvs = alpha_snvs
+        self.total_snv_sites = total_snv_sites
+
+        self.snv_table = snv_table
+        self.reads_table = reads_table
+        self.read_to_snvs = read_to_snvs
+        self.snvs_to_reads = snvs_to_reads
+        self.total_positions = total_positions
+        self.non_consensus_snvs = non_consensus_snvs
+
+        self.results = True
+
+        test = 0
+        for snv in snvs_to_reads:
+            # print(len(snvs_to_reads[snv]))
+            if snv in non_consensus_snvs:
+                test += len(snvs_to_reads[snv])
+        print(test)
+        print(len(non_consensus_snvs))
+
 
 def main():
     if len(sys.argv) > 1:
@@ -238,10 +315,13 @@ def main():
         min_snp = int(myargs['-s'])
     else:
         min_snp = 3
-    positions = _get_scaffold_positions(genes, fasta)
-    results = run_strain_profiler(bam, positions, min_coverage = min_coverage, min_snp = min_snp)
-    
-    write_tables(fasta, bam, results)
+
+
+    strains = SNVdata()
+
+    strains.get_scaffold_positions(genes, fasta)
+    strains.run_strain_profiler(bam, min_coverage = min_coverage, min_snp = min_snp)
+    strains.save()
 
     # write_tables(genome, results)
 
