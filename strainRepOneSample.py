@@ -177,7 +177,7 @@ class SNVdata:
         snvs_frequencies = defaultdict(int)
         total_read_length = 0
         total_snv_sites = 0
-        non_consensus_snvs = []
+        non_consensus_snvs = set()
         ## ##################
         ## START READING BAM
 
@@ -228,7 +228,7 @@ class SNVdata:
                                         if val != consensus:
                                             alpha_snvs += 1
                                             if position + ":" + val not in non_consensus_snvs:
-                                                non_consensus_snvs.append(position + ":" + val)
+                                                non_consensus_snvs.add(position + ":" + val)
 
                                 except KeyError: # This would be like an N or something not A/C/T/G
                                     pass
@@ -271,7 +271,7 @@ class SNVdata:
         print("Total SNV-bases: " + str(alpha_snvs))
         print("Total sites: " + str(total_positions))
         print("Total number of bases: " + str(total_read_length))
-
+        print("Non-consensus SNVs: ") + str(len(non_consensus_snvs))
         self.total_read_length = total_read_length
         self.alpha_snvs = alpha_snvs
         self.total_snv_sites = total_snv_sites
@@ -285,13 +285,6 @@ class SNVdata:
 
         self.results = True
 
-        test = 0
-        for snv in snvs_to_reads:
-            # print(len(snvs_to_reads[snv]))
-            if snv in non_consensus_snvs:
-                test += len(snvs_to_reads[snv])
-        print(test)
-        print(len(non_consensus_snvs))
 
 
 def main():
