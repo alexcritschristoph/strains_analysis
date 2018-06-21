@@ -9,7 +9,7 @@ import numpy as np
 from tqdm import tqdm
 import sys
 import pandas as pd
-import cPickle
+import pickle
 import csv
 
 def entropy2(counts):
@@ -114,7 +114,7 @@ class SNVdata:
             f.close()
 
             f = open(genome + ".data", 'wb')
-            cPickle.dump(self.__dict__, f, 2)
+            pickle.dump(self.__dict__, f, 2)
             f.close()
         else:
             print("No data to save.")
@@ -122,7 +122,7 @@ class SNVdata:
     def load(self, name):
         self.__dict__.clear()
         f = open(name + ".data", 'rb')
-        tmp_dict = cPickle.load(f)
+        tmp_dict = pickle.load(f)
         f.close()          
 
         self.__dict__.update(tmp_dict) 
