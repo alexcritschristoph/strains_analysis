@@ -98,9 +98,14 @@ class SNVdata:
         self.non_consensus_snvs = None
         self.snv_net = None
 
-    def save(self, genome = None):
+    def save(self, genome = None, size=0):
         if self.results:
             # Generate tables
+            if size == 0:
+                self.read_to_snvs = None
+                self.snvs_frequencies = None
+                self.snvs_to_reads = None
+
             print("Printing to tables.")
             sample = self.bam.split("/")[-1].split(".bam")[0]
 
@@ -157,6 +162,13 @@ class SNVdata:
                         snv_pair = frozenset([snv, snv2])
                         snv_net[snv_pair] += 1
         self.snv_net = snv_net
+
+        #Embed this network with node2vec
+
+
+    def plot(self, viz_type = None)
+        pass
+
 
     def run_strain_profiler(self, bam, min_coverage = 5, min_snp = 3):
 
