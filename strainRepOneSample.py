@@ -166,7 +166,7 @@ class SNVdata:
         #Embed this network with node2vec
 
 
-    def plot(self, viz_type = None)
+    def plot(self, viz_type = None):
         pass
 
 
