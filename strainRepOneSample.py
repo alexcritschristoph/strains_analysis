@@ -98,12 +98,14 @@ class SNVdata:
         self.non_consensus_snvs = None
         self.snv_net = None
 
-    def save(self):
+    def save(self, genome = None):
         if self.results:
             # Generate tables
             print("Printing to tables.")
             sample = self.bam.split("/")[-1].split(".bam")[0]
-            genome = self.fasta.split("/")[-1].split(".")[0]
+
+            if not genome:
+                genome = self.fasta.split("/")[-1].split(".")[0]
             print(genome)
             self.snv_table.to_csv(genome + ".reads",sep='\t', quoting=csv.QUOTE_NONE)
             self.reads_table.to_csv(genome + ".freq",sep='\t', quoting=csv.QUOTE_NONE)
@@ -320,13 +322,17 @@ def main():
     else:
         min_snp = 3
 
+    if '-o' in myargs:
+        prefix = myargs['-o']
+    else:
+        prefix = None
 
     strains = SNVdata()
 
     strains.get_scaffold_positions(genes, fasta)
     strains.run_strain_profiler(bam, min_coverage = min_coverage, min_snp = min_snp)
     strains.calc_linkage_network()
-    strains.save()
+    strains.save(prefix)
 
     # write_tables(genome, results)
 
