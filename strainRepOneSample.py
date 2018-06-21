@@ -96,6 +96,7 @@ class SNVdata:
         self.total_positions = None
         self.total_snv_sites = None 
         self.non_consensus_snvs = None
+        self.snv_net = None
 
     def save(self):
         if self.results:
@@ -142,7 +143,18 @@ class SNVdata:
                 self.positions.append([str(rec.id),1,len(rec.seq)])
         self.fasta = fasta_file
 
+    def calc_linkage_network(self):
+        snv_net = defaultdict(int)
+        print("Calculating SNV linkage network...")
 
+        for snv in self.snvs_to_reads:
+            reads = self.snvs_to_reads[snv]
+            for read in reads:
+                for snv2 in self.read_to_snvs[read]:
+                    if snv2 != snv:
+                        snv_pair = frozenset([snv, snv2])
+                        snv_net[snv_pair] += 1
+        self.snv_net = snv_net
 
     def run_strain_profiler(self, bam, min_coverage = 5, min_snp = 3):
 
@@ -252,14 +264,6 @@ class SNVdata:
             reads_table['snvs'].append(str(len(read_to_snvs[read])))
         reads_table = pd.DataFrame(reads_table)
 
-
-        # Calculate SNP linkage network
-        # print("Calculating SNV linkage network...")
-        # for snv in snvs_frequencies:
-        #     reads = snvs_to_reads[snv]
-        #     for read in reads:
-
-
         # Final statistics
         print("Total SNVs-sites: " + str(total_snv_sites))
         print("Total SNV-bases: " + str(alpha_snvs))
@@ -321,6 +325,7 @@ def main():
 
     strains.get_scaffold_positions(genes, fasta)
     strains.run_strain_profiler(bam, min_coverage = min_coverage, min_snp = min_snp)
+    strains.calc_linkage_network()
     strains.save()
 
     # write_tables(genome, results)
