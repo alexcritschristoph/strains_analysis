@@ -194,7 +194,7 @@ class SNVdata:
                     pair_mapqs[read.query_name] = read.mapping_quality
 
         ## Start looping through each gene region
-        for gene in tqdm(self.positions[0:10], desc='Finding SNVs ...'):
+        for gene in tqdm(self.positions, desc='Finding SNVs ...'):
             scaff = gene[0]
             for pileupcolumn in samfile.pileup(scaff, gene[1], gene[2], stepper = 'nofilter'):
                 #is this position an SNV?
