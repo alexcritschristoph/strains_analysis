@@ -1,16 +1,29 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 
-#    DON'T CALL IT THAT
+'''
+Possible names for this program:
+* strainRep
+* blockStrain
+* destrain
+* instrain
+'''
+
+# Get the version
+from _version import __version__
+
+# Import
+import csv
+import sys
+import math
 import pysam
+import pickle
+import argparse
+
+import numpy as np
+import pandas as pd
+from tqdm import tqdm
 from Bio import SeqIO
 from collections import defaultdict
-import math
-import numpy as np
-from tqdm import tqdm
-import sys
-import pandas as pd
-import pickle
-import csv
 
 def entropy2(counts):
     probs = []
@@ -48,7 +61,6 @@ def call_snv_site(counts, min_cov = 5, min_snp = 3):
             if c >= min_snp:
                 i += 1
         if i > 1:
-            #return consensus nucleotide and 2nd 
             return C2P[counts.index(max(counts))]
     else:
         return False
@@ -80,7 +92,7 @@ def _get_base_counts(pileupcolumn, minimum_mapq = 0, pair_mapqs = {}):
 
 class SNVdata:
 
-    # The class "constructor" - It's actually an initializer 
+    # The class "constructor" - It's actually an initializer
     def __init__(self):
         self.fasta = ""
         self.bam = ""
@@ -94,7 +106,7 @@ class SNVdata:
         self.snvs_to_reads = None
         self.total_read_length = None
         self.total_positions = None
-        self.total_snv_sites = None 
+        self.total_snv_sites = None
         self.non_consensus_snvs = None
         self.snv_net = None
 
@@ -115,7 +127,7 @@ class SNVdata:
             self.snv_table.to_csv(genome + ".reads",sep='\t', quoting=csv.QUOTE_NONE)
             self.reads_table.to_csv(genome + ".freq",sep='\t', quoting=csv.QUOTE_NONE)
 
-            f = open('./' + genome + ".data", "w+")
+            f = open(genome + ".data", "w+")
             f.write("Genome\tSNVs\tTotal Read Length\n")
             f.write(genome + "\t" + str(self.alpha_snvs) + "\t" + str(self.total_read_length))
             f.close()
@@ -130,16 +142,16 @@ class SNVdata:
         self.__dict__.clear()
         f = open(name + ".data", 'rb')
         tmp_dict = pickle.load(f)
-        f.close()          
+        f.close()
 
-        self.__dict__.update(tmp_dict) 
+        self.__dict__.update(tmp_dict)
 
     def get_scaffold_positions(self, gene_list = None, fasta_file = None):
         ''' Returns a list of windows to record SNVs in'''
         if not fasta_file and not gene_list:
             print("ERROR: REQUIRED TO SUPPLY FASTA or GENE FILE")
             sys.exit(1)
-        
+
         if gene_list:
             f = open(gene_list)
             for line in f.readlines():
@@ -247,15 +259,15 @@ class SNVdata:
 
 
                     freqs = {}
-                    nucl_count = 0 
+                    nucl_count = 0
                     for nucl in counts:
                         if nucl >= min_snp:
                             freq = float(nucl) / float(sum(counts))
                             snp = position + ":" + C2P[nucl_count]
                             snvs_frequencies[snp] = freq
                         nucl_count += 1
-                        
-        #Calculate SNP per read, Frequencies intersection 
+
+        #Calculate SNP per read, Frequencies intersection
         print("Calculating frequency - SNVs per read intersection...")
         snv_table = defaultdict(list)
         for snv in snvs_frequencies:
@@ -283,7 +295,8 @@ class SNVdata:
         print("Total SNV-bases: " + str(alpha_snvs))
         print("Total sites: " + str(total_positions))
         print("Total number of bases: " + str(total_read_length))
-        print("Non-consensus SNVs: ") + str(len(non_consensus_snvs))
+        print("Non-consensus SNVs: " + str(len(non_consensus_snvs)))
+
         self.total_read_length = total_read_length
         self.alpha_snvs = alpha_snvs
         self.total_snv_sites = total_snv_sites
@@ -297,41 +310,10 @@ class SNVdata:
 
         self.results = True
 
-
-
-def main():
-    if len(sys.argv) > 1:
-        bam = sys.argv[1]
-    else:
-        print("ERROR: FIRST ARGUMENT NEEDS TO BE THE BAM OR SAM")
-        sys.exit(1)
-
-    if len(sys.argv) > 2:
-        fasta = sys.argv[2]
-    else:
-        print("ERROR: SECOND ARGUMENT NEEDS TO BE THE FASTA")
-        sys.exit(1)
-
-    myargs = getopts(sys.argv)
-    
-    if '-g' in myargs:
-        genes = myargs['-g']
-    else:
-        genes = None
-    if '-c' in myargs:  
-        min_coverage = int(myargs['-c'])
-    else:
-        min_coverage = 5
-    if '-s' in myargs:  
-        min_snp = int(myargs['-s'])
-    else:
-        min_snp = 3
-
-    if '-o' in myargs:
-        prefix = myargs['-o']
-    else:
-        prefix = None
-
+def main(args):
+    '''
+    Main entry point
+    '''
     strains = SNVdata()
 
     strains.get_scaffold_positions(genes, fasta)
@@ -340,6 +322,35 @@ def main():
     strains.save(prefix)
 
     # write_tables(genome, results)
+
+if __name__ == '__main__':
+    """ This is executed when run from the command line """
+    parser = argparse.ArgumentParser()
+
+    # Required positional arguments
+    parser.add_argument("bam", help="Sorted .bam file")
+    parser.add_argument("fasta", help="Fasta file the bam is mapped to")
+
+    # Optional arguments
+    parser.add_argument("-o", "--output", action="store", default=None, \
+        help='Output prefix')
+    parser.add_argument("-g", "--genes", action="store", default=None, \
+        help='Optional genes file')
+    parser.add_argument("-c", "--min_coverage", action="store", default=5, \
+        help='Minimum SNP coverage')
+    parser.add_argument("-s", "--min_snp", action="store", default=5, \
+        help='Im not actually sure what this does...')
+
+    # Specify output of "--version"
+    parser.add_argument(
+        "--version",
+        action="version",
+        version="%(prog)s (version {version})".format(version=__version__))
+
+    # Parse
+    args = parser.parse_args()
+
+    main(args)
 
 if __name__ == '__main__':
     main()
