@@ -53,12 +53,17 @@ class test_strains():
         '''
         Basic test
         '''
+        # Set up
         base = self.test_dir + 'test'
 
         # Run program
         cmd = "{0} {1} {2} -o {3}".format(self.script, self.sorted_bam, \
             self.fasta, base)
         print(cmd)
+        call(cmd, shell=True)
+
+        # Make sure it produced output
+        assert len(glob.glob(base + '*')) == 3
 
 if __name__ == '__main__':
     #test_strainProfiler_breadth().run()
