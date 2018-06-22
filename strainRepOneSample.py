@@ -219,7 +219,7 @@ class SNVdata:
                     pair_mapqs[read.query_name] = read.mapping_quality
 
         ## Start looping through each gene region
-        for gene in tqdm(self.positions[0:5], desc='Finding SNVs ...'):
+        for gene in tqdm(self.positions, desc='Finding SNVs ...'):
             scaff = gene[0]
             for pileupcolumn in samfile.pileup(scaff, gene[1], gene[2], stepper = 'nofilter'):
                 #is this position an SNV?
@@ -266,7 +266,6 @@ class SNVdata:
                             snvs_frequencies[snp] = freq
                         nucl_count += 1
 
-        print(non_consensus_snvs)
         #Calculate SNP per read, Frequencies intersection
         print("Calculating frequency - SNVs per read intersection...")
         snv_table = defaultdict(list)
