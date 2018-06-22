@@ -53,8 +53,11 @@ class test_strains():
         '''
         Basic test
         '''
+        base = self.test_dir + 'test'
+
         # Run program
-        cmd = "{0} {1} {2}".format(self.script, self.sorted_bam, self.fasta)
+        cmd = "{0} {1} {2} -o {3}".format(self.script, self.sorted_bam, \
+            self.fasta, base)
         print(cmd)
 
 if __name__ == '__main__':

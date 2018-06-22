@@ -316,10 +316,10 @@ def main(args):
     '''
     strains = SNVdata()
 
-    strains.get_scaffold_positions(genes, fasta)
-    strains.run_strain_profiler(bam, min_coverage = min_coverage, min_snp = min_snp)
+    strains.get_scaffold_positions(args.genes, args.fasta)
+    strains.run_strain_profiler(args.bam, min_coverage = args.min_coverage, min_snp = args.min_snp)
     strains.calc_linkage_network()
-    strains.save(prefix)
+    strains.save(args.output)
 
     # write_tables(genome, results)
 
@@ -351,6 +351,3 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     main(args)
-
-if __name__ == '__main__':
-    main()
