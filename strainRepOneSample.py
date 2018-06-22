@@ -184,7 +184,6 @@ class SNVdata:
 
     def run_strain_profiler(self, bam, min_coverage = 5, min_snp = 3):
 
-
         minimum_mapq = 2
         P2C = {'A':0, 'C':1, 'T':2, 'G':3}
         C2P = {0:'A', 1:'C', 2:'T', 3:'G'}
@@ -220,7 +219,7 @@ class SNVdata:
                     pair_mapqs[read.query_name] = read.mapping_quality
 
         ## Start looping through each gene region
-        for gene in tqdm(self.positions, desc='Finding SNVs ...'):
+        for gene in tqdm(self.positions[0:5], desc='Finding SNVs ...'):
             scaff = gene[0]
             for pileupcolumn in samfile.pileup(scaff, gene[1], gene[2], stepper = 'nofilter'):
                 #is this position an SNV?
@@ -267,6 +266,7 @@ class SNVdata:
                             snvs_frequencies[snp] = freq
                         nucl_count += 1
 
+        print(non_consensus_snvs)
         #Calculate SNP per read, Frequencies intersection
         print("Calculating frequency - SNVs per read intersection...")
         snv_table = defaultdict(list)
@@ -317,7 +317,7 @@ def main(args):
     strains = SNVdata()
 
     strains.get_scaffold_positions(args.genes, args.fasta)
-    strains.run_strain_profiler(args.bam, min_coverage = args.min_coverage, min_snp = args.min_snp)
+    strains.run_strain_profiler(args.bam, min_coverage = int(args.min_coverage), min_snp = int(args.min_snp))
     strains.calc_linkage_network()
     strains.save(args.output)
 
@@ -337,9 +337,9 @@ if __name__ == '__main__':
     parser.add_argument("-g", "--genes", action="store", default=None, \
         help='Optional genes file')
     parser.add_argument("-c", "--min_coverage", action="store", default=5, \
-        help='Minimum SNP coverage')
-    parser.add_argument("-s", "--min_snp", action="store", default=5, \
-        help='Im not actually sure what this does...')
+        help='Minimum SNV coverage')
+    parser.add_argument("-s", "--min_snp", action="store", default=3, \
+        help='Minimum number of reads to confirm a SNV')
 
     # Specify output of "--version"
     parser.add_argument(
