@@ -16,6 +16,7 @@ import csv
 import sys
 import math
 import pysam
+import graph
 import pickle
 import argparse
 
@@ -24,6 +25,7 @@ import pandas as pd
 from tqdm import tqdm
 from Bio import SeqIO
 from collections import defaultdict
+from sklearn.decomposition import PCA
 
 def entropy2(counts):
     probs = []
@@ -109,6 +111,7 @@ class SNVdata:
         self.total_snv_sites = None
         self.non_consensus_snvs = None
         self.snv_net = None
+        self.graph_model = None
 
     def save(self, genome = None, size=0):
         if self.results:
@@ -174,9 +177,43 @@ class SNVdata:
                         snv_pair = frozenset([snv, snv2])
                         snv_net[snv_pair] += 1
         self.snv_net = snv_net
+        print("There were " + str(len(snv_net.keys())) + " edges in the network")
+        # Write to file
+
 
         #Embed this network with node2vec
 
+    def calc_graph(self, fasta = None):
+        if self.snv_net:
+            genome = fasta.split("/")[-1].split(".")[0]
+            #create networkx graph
+            print("Creating graph...")
+            nx_G = graph.create_graph(self.snv_net)
+
+            #Create node2vec graph object
+            G = graph.Graph(nx_G, False, 1, 1)
+
+            #Run node2vec
+            print("Calculating transition probabilities...")
+            G.preprocess_transition_probs()
+            print("Simulating walks...")
+            walks = G.simulate_walks(10, 80)
+            print("Learning embeddings")
+            model = graph.learn_embeddings(walks, genome + ".model")
+            self.graph_model = model
+
+        else:
+            print("ERROR: NO LINKAGE NET GENERATED")
+            return False
+
+    def plot_graph(self):
+        if self.model:
+            print("Running PCA...")
+            my_pca = PCA(n_components=d)
+            pca_output = my_pca.fit_transform(model)
+
+        else:
+            print("ERROR: NO GRAPH GENERATED.")
 
     def plot(self, viz_type = None):
         pass
@@ -318,7 +355,9 @@ def main(args):
     strains.get_scaffold_positions(args.genes, args.fasta)
     strains.run_strain_profiler(args.bam, min_coverage = int(args.min_coverage), min_snp = int(args.min_snp))
     strains.calc_linkage_network()
+    # strains.calc_graph(args.output)
     strains.save(args.output)
+
 
     # write_tables(genome, results)
 
