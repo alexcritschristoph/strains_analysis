@@ -16,10 +16,9 @@ import csv
 import sys
 import math
 import pysam
-import graph
 import pickle
 import argparse
-
+import networkx as nx
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -111,9 +110,11 @@ class SNVdata:
         self.total_snv_sites = None
         self.non_consensus_snvs = None
         self.snv_net = None
+        self.graph = None
         self.graph_model = None
+        self.output = None
 
-    def save(self, genome = None, size=0):
+    def save(self, size=0):
         if self.results:
             # Generate tables
             if size == 0:
@@ -124,11 +125,10 @@ class SNVdata:
             print("Printing to tables.")
             sample = self.bam.split("/")[-1].split(".bam")[0]
 
-            if not genome:
-                genome = self.fasta.split("/")[-1].split(".")[0]
+            genome = self.output
             print(genome)
-            self.snv_table.to_csv(genome + ".reads",sep='\t', quoting=csv.QUOTE_NONE)
-            self.reads_table.to_csv(genome + ".freq",sep='\t', quoting=csv.QUOTE_NONE)
+            self.snv_table.to_csv(genome + ".freq",sep='\t', quoting=csv.QUOTE_NONE)
+            self.reads_table.to_csv(genome + ".reads",sep='\t', quoting=csv.QUOTE_NONE)
 
             f = open(genome + ".data", "w+")
             f.write("Genome\tSNVs\tTotal Read Length\n")
@@ -149,6 +149,7 @@ class SNVdata:
 
         self.__dict__.update(tmp_dict)
 
+
     def get_scaffold_positions(self, gene_list = None, fasta_file = None):
         ''' Returns a list of windows to record SNVs in'''
         if not fasta_file and not gene_list:
@@ -166,6 +167,9 @@ class SNVdata:
         self.fasta = fasta_file
 
     def calc_linkage_network(self):
+        ''' Calculates the SNV linkage network - saves it as a dictionary of edges in self.snv_net. 
+        Writes it out to a file, genome.net for reading in through other programs like node2vec
+        '''
         snv_net = defaultdict(int)
         print("Calculating SNV linkage network...")
 
@@ -177,36 +181,25 @@ class SNVdata:
                         snv_pair = frozenset([snv, snv2])
                         snv_net[snv_pair] += 1
         self.snv_net = snv_net
+
         print("There were " + str(len(snv_net.keys())) + " edges in the network")
+        print("Writing graph to file...")
+        f = open(self.output + '.net', 'w+')
+        for edge in snv_net:
+            nodes = list(edge)
+            f.write(nodes[0] + '\t' + nodes[1] + "\t" + str(snv_net[edge]) + "\n")
+        f.close()
+
         # Write to file
 
 
-        #Embed this network with node2vec
+    def calc_network_structure(self, genome):
+        '''runs node2vec on a graph'''
+        pass
 
-    def calc_graph(self, fasta = None):
-        if self.snv_net:
-            genome = fasta.split("/")[-1].split(".")[0]
-            #create networkx graph
-            print("Creating graph...")
-            nx_G = graph.create_graph(self.snv_net)
-
-            #Create node2vec graph object
-            G = graph.Graph(nx_G, False, 1, 1)
-
-            #Run node2vec
-            print("Calculating transition probabilities...")
-            G.preprocess_transition_probs()
-            print("Simulating walks...")
-            walks = G.simulate_walks(10, 80)
-            print("Learning embeddings")
-            model = graph.learn_embeddings(walks, genome + ".model")
-            self.graph_model = model
-
-        else:
-            print("ERROR: NO LINKAGE NET GENERATED")
-            return False
 
     def plot_graph(self):
+        ''' Plots the output of node2vec models as a 2d histogram '''
         if self.model:
             print("Running PCA...")
             my_pca = PCA(n_components=d)
@@ -217,6 +210,31 @@ class SNVdata:
 
     def plot(self, viz_type = None):
         pass
+
+    def calc_graph(self, fasta = None):
+        ''' Takes the snv_net object and creates a networkx network object from it.
+        Not called automatically, for use in jupyter notebooks to play around with net.
+        '''
+        if self.snv_net:
+            #create networkx graph
+            G=nx.Graph()
+            #add nodes
+            nodes = set()
+            for edge in self.snv_net:
+                nodes_set = list(edge)
+                node1 = nodes_set[0]
+                node2 = nodes_set[1]
+                if node1 not in nodes:
+                    G.add_node(node1)
+                    nodes.add(node1)
+                if node2 not in nodes:
+                    G.add_node(node2) 
+                    nodes.add(node2)
+                G.add_edge(node1,node2, weight=self.snv_net[edge])
+            self.graph = G
+        else:
+            print("ERROR: NO LINKAGE NET GENERATED")
+            return False
 
 
     def run_strain_profiler(self, bam, min_coverage = 5, min_snp = 3):
@@ -256,7 +274,7 @@ class SNVdata:
                     pair_mapqs[read.query_name] = read.mapping_quality
 
         ## Start looping through each gene region
-        for gene in tqdm(self.positions, desc='Finding SNVs ...'):
+        for gene in tqdm(self.positions[0:10], desc='Finding SNVs ...'):
             scaff = gene[0]
             for pileupcolumn in samfile.pileup(scaff, gene[1], gene[2], stepper = 'nofilter'):
                 #is this position an SNV?
@@ -350,7 +368,13 @@ def main(args):
     '''
     Main entry point
     '''
+
     strains = SNVdata()
+
+    if not args.output:
+        strains.output = args.fasta.split("/")[-1].split(".")[0]
+    else:
+        strains.output = args.output
 
     strains.get_scaffold_positions(args.genes, args.fasta)
     strains.run_strain_profiler(args.bam, min_coverage = int(args.min_coverage), min_snp = int(args.min_snp))
