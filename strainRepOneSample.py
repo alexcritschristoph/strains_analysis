@@ -113,6 +113,7 @@ class SNVdata:
         self.graph = None
         self.graph_model = None
         self.output = None
+        self.testing = False
 
     def save(self, size=0):
         if self.results:
@@ -273,8 +274,11 @@ class SNVdata:
                 if pair_mapqs[read.query_name] < read.mapping_quality:
                     pair_mapqs[read.query_name] = read.mapping_quality
 
-        ## Start looping through each gene region
-        for gene in tqdm(self.positions[0:10], desc='Finding SNVs ...'):
+        if self.testing:
+            self.positions = self.positions[0:10]
+
+        ## Start looping through each gene region            
+        for gene in tqdm(self.positions, desc='Finding SNVs ...'):
             scaff = gene[0]
             for pileupcolumn in samfile.pileup(scaff, gene[1], gene[2], stepper = 'nofilter'):
                 #is this position an SNV?
@@ -371,6 +375,9 @@ def main(args):
 
     strains = SNVdata()
 
+    if args.testing:
+        strains.testing = True
+
     if not args.output:
         strains.output = args.fasta.split("/")[-1].split(".")[0]
     else:
@@ -402,6 +409,9 @@ if __name__ == '__main__':
         help='Minimum SNV coverage')
     parser.add_argument("-s", "--min_snp", action="store", default=3, \
         help='Minimum number of reads to confirm a SNV')
+
+    parser.add_argument('--testing', action='store_true', default=False, \
+        help ="Testing command runs only on first 10 contigs to run faster.")
 
     # Specify output of "--version"
     parser.add_argument(
