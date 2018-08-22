@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from Bio import SeqIO
+from itertools import combinations
 from collections import defaultdict
 from sklearn.decomposition import PCA
 
@@ -67,7 +68,7 @@ def call_snv_site(counts, min_cov = 5, min_snp = 3):
         return False
 
 
-def _get_base_counts(pileupcolumn, minimum_mapq = 0, pair_mapqs = {}):
+def _get_base_counts(pileupcolumn, minimum_mapq = 0, pair_mapqs = {}, min_phred = 30):
     '''
     From a pileupcolumn object, return a list with the counts of [A, C, T, G]
     '''
@@ -78,8 +79,7 @@ def _get_base_counts(pileupcolumn, minimum_mapq = 0, pair_mapqs = {}):
     empty = [0,0,0,0]
 
     for pileupread in pileupcolumn.pileups:
-        # print(pileupread.)
-        if not pileupread.is_del and not pileupread.is_refskip and pileupread.alignment.query_qualities[pileupread.query_position] >= 30:
+        if not pileupread.is_del and not pileupread.is_refskip and pileupread.alignment.query_qualities[pileupread.query_position] >= min_phred:
             read_name = pileupread.alignment.query_name
             if pair_mapqs[read_name] >= minimum_mapq:
                 try:
@@ -114,9 +114,10 @@ class SNVdata:
         self.graph_model = None
         self.output = None
         self.testing = False
+        self.min_phred = 30
 
     def save(self, size=0):
-        if self.results:
+        if self.results and self.alpha_snvs > 0:
             # Generate tables
             if size == 0:
                 self.read_to_snvs = None
@@ -173,14 +174,17 @@ class SNVdata:
         '''
         snv_net = defaultdict(int)
         print("Calculating SNV linkage network...")
-
-        for snv in self.snvs_to_reads:
-            reads = self.snvs_to_reads[snv]
-            for read in reads:
-                for snv2 in self.read_to_snvs[read]:
-                    if snv2 != snv:
-                        snv_pair = frozenset([snv, snv2])
-                        snv_net[snv_pair] += 1
+        for read in self.read_to_snvs:
+            for c in combinations(set(self.read_to_snvs[read]), 2):
+                snv_pair = frozenset([c[0], c[1]])
+                snv_net[snv_pair] += 1
+#        for snv in self.snvs_to_reads:
+#            reads = self.snvs_to_reads[snv]
+#            for read in reads:
+#                for snv2 in self.read_to_snvs[read]:
+#                    if snv2 != snv:
+#                        snv_pair = frozenset([snv, snv2])
+#                        snv_net[snv_pair] += 1
         self.snv_net = snv_net
 
         print("There were " + str(len(snv_net.keys())) + " edges in the network")
@@ -276,15 +280,13 @@ class SNVdata:
 
         if self.testing:
             self.positions = self.positions[0:10]
-
         ## Start looping through each gene region            
         for gene in tqdm(self.positions, desc='Finding SNVs ...'):
             scaff = gene[0]
             for pileupcolumn in samfile.pileup(scaff, gene[1], gene[2], stepper = 'nofilter'):
                 #is this position an SNV?
                 position = scaff + "_" + str(pileupcolumn.pos)
-                counts = _get_base_counts(pileupcolumn, minimum_mapq = minimum_mapq, pair_mapqs = pair_mapqs)
-
+                counts = _get_base_counts(pileupcolumn, minimum_mapq = minimum_mapq, pair_mapqs = pair_mapqs, min_phred = self.min_phred)
                 consensus = False
                 if counts:
                     total_positions += 1
@@ -299,7 +301,7 @@ class SNVdata:
                     for pileupread in pileupcolumn.pileups:
                         read_name = pileupread.alignment.query_name
                         if not pileupread.is_del and not pileupread.is_refskip:
-                            if pileupread.alignment.query_qualities[pileupread.query_position] >= 30 and pair_mapqs[read_name] >= minimum_mapq:
+                            if pileupread.alignment.query_qualities[pileupread.query_position] >= self.min_phred and pair_mapqs[read_name] >= minimum_mapq:
                                 try:
                                     val = pileupread.alignment.query_sequence[pileupread.query_position]
                                     #if value is not the consensus value
