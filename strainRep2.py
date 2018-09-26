@@ -177,7 +177,7 @@ class SNVdata:
     def get_scaffold_positions(self, gene_list = None, fasta_file = None):
         ''' Returns a list of windows to record SNVs in'''
         if not fasta_file and not gene_list:
-            print("ERROR: REQUIRED TO SUPPLY FASTA or GENE FILE")
+#            print("ERROR: REQUIRED TO SUPPLY FASTA or GENE FILE")
             sys.exit(1)
 
         if gene_list:
@@ -355,10 +355,55 @@ class SNVdata:
         #assumes that paired reads have the same "query name"
         #Is this a good assumption?
         pair_mapqs = defaultdict(int)
+        insert_sizes = defaultdict(int)
+        insert_sizes_r1 = defaultdict(lambda: -1)
+        found_pairs = set()
+        read_pairs_observed = set()
+
+        total_read_count = 0
+        read_name_count = defaultdict(int)
         for gene in tqdm(self.positions, desc='Getting read pairs: '):
-            for read in samfile.fetch(gene[0], gene[1], gene[2]):
+           for read in samfile.fetch(gene[0], gene[1], gene[2]):
+                total_read_count += 1
+                read_name_count[read.query_name] += 1
+                #second read in pair
+                if read.query_name in read_pairs_observed and read.query_name not in found_pairs:
+                    found_pairs.add(read.query_name)
+                    if read.get_reference_positions() != [] and insert_sizes_r1[read.query_name] != -1:
+                        insert_sizes[read.query_name] = read.get_reference_positions()[-1] - insert_sizes_r1[read.query_name]
+#                        print(insert_sizes[read.query_name])
+                #this is the first read in a pair
+                else:
+                    if read.get_reference_positions() != []:
+                        insert_sizes_r1[read.query_name] = read.get_reference_positions()[0]
+                    read_pairs_observed.add(read.query_name)
                 if pair_mapqs[read.query_name] < read.mapping_quality:
                     pair_mapqs[read.query_name] = read.mapping_quality
+
+        min_insert = 50 # paired reads must be 50 bp apart
+        max_insert = np.median(list(insert_sizes.values())) * 2 # they can't be more than 2 * apart as the average
+
+
+        filtered_reads = set()
+        too_short = 0
+        too_long = 0
+        for read_pair in found_pairs:
+           if insert_sizes[read_pair] > min_insert:
+                if insert_sizes[read_pair] < max_insert:
+                    filtered_reads.add(read_pair)
+                else:
+                    too_long += 2
+           else:
+                too_short += 2
+
+        print("median insert size: " + str(max_insert / 2))
+        print("total reads found: " + str(total_read_count))
+        print("reads with pair found: " + str(len(found_pairs) * 2))
+        print("paired reads < 50 bp apart: " + str(too_short))
+        print("paired reads > " + str(max_insert) + " apart: " + str(too_long))
+        print("reads which pass pair insert size filter: " + str(len(filtered_reads)*2))
+
+	# FOR TESTING: calculate insert sizes
 
         if self.testing:
             self.positions = self.positions[0:10]
@@ -369,7 +414,7 @@ class SNVdata:
         for gene in tqdm(self.positions, desc='Finding SNVs ...'):
             scaff = gene[0]
             window = gene[0] + ":" + str(gene[1]) + ":" + str(gene[2])
-            for pileupcolumn in samfile.pileup(scaff, gene[1], gene[2], stepper = 'nofilter'):
+            for pileupcolumn in samfile.pileup(scaff, gene[1], gene[2]):
                 ## Step 1: Are there any reads at this position?
                 position = scaff + "_" + str(pileupcolumn.pos)
                 counts = _get_base_counts(pileupcolumn, minimum_mapq = minimum_mapq, pair_mapqs = pair_mapqs)
@@ -501,3 +546,5 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     main(args)
+
+
