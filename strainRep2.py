@@ -64,7 +64,7 @@ def calculate_clonality(counts, min_cov = 5):
     '''
     Calculates the probability that two reads have the same allele at this position
     '''
-    prob = counts[0] * counts[0] + counts[1] * counts[1] + counts[2] * counts[2] + counts[3] * counts[3]
+    prob = (float(counts[0]) / sum(counts)) * (float(counts[0]) / sum(counts)) + (float(counts[1]) / sum(counts)) * (float(counts[1]) / sum(counts)) + (float(counts[2]) / sum(counts)) * (float(counts[2]) / sum(counts)) + (float(counts[3]) / sum(counts)) * (float(counts[3]) / sum(counts))
     return prob
 
 
@@ -86,7 +86,7 @@ def call_snv_site(counts, min_cov = 5, min_snp = 3):
         return False
 
 
-def _get_base_counts(pileupcolumn, minimum_mapq = 0, pair_mapqs = {}):
+def _get_base_counts(pileupcolumn, filtered_reads):
     '''
     From a pileupcolumn object, return a list with the counts of [A, C, T, G]
     '''
@@ -98,9 +98,9 @@ def _get_base_counts(pileupcolumn, minimum_mapq = 0, pair_mapqs = {}):
 
     for pileupread in pileupcolumn.pileups:
         # print(pileupread.)
-        if not pileupread.is_del and not pileupread.is_refskip and pileupread.alignment.query_qualities[pileupread.query_position] >= 30:
+        if not pileupread.is_del and not pileupread.is_refskip:
             read_name = pileupread.alignment.query_name
-            if pair_mapqs[read_name] >= minimum_mapq:
+            if read_name in filtered_reads:
                 try:
                     counts[P2C[pileupread.alignment.query_sequence[pileupread.query_position]]] += 1
                 except KeyError: # This would be like an N or something not A/C/T/G
@@ -132,13 +132,13 @@ class SNVdata:
         self.read_to_snvs = None      #
         self.windows_to_snvs = None   # 
         self.snv_counts = None        # Counts of AGCT for each SNV position
-        self.clonality = None         # Dict of clonality histograms (lists) by window
+        self.clonality_table = None         # Dict of clonality histograms (lists) by window
         self.snv_graph = None         # Weighted networkx graph that tracks SNVs( 100:A, 100:T are diff nodes) that are linked
         self.position_graph = None    # Unweighted networkx graph that tracks positions that are linked
         self.r2linkage_table = None         # Dict of r2 histograms (list of lists) by window
 
         # General statistics
-        self.total_read_length = None
+        self.coverages = None
         self.total_positions = None
         self.total_snv_sites = None
         self.alpha_snvs = None
@@ -158,6 +158,7 @@ class SNVdata:
             genome = self.output
             print(genome)
             self.snv_table.to_csv(genome + ".freq",sep='\t', quoting=csv.QUOTE_NONE)
+            self.clonality_table.to_csv(genome + ".clonal",sep='\t', quoting=csv.QUOTE_NONE)
 
             f = open(genome + ".data", 'wb')
             pickle.dump(self.__dict__, f, 2)
@@ -336,12 +337,11 @@ class SNVdata:
         total_positions = 0
         read_to_snvs = defaultdict(list)
         snvs_frequencies = defaultdict(int)
-        clonality = []
         clonality_by_window = defaultdict(list)
         windows_to_snvs = defaultdict(list)
         snv_counts = {}
 
-        total_read_length = 0
+        coverages = []
         total_snv_sites = 0
 
         ## Start reading BAM
@@ -361,11 +361,9 @@ class SNVdata:
         read_pairs_observed = set()
 
         total_read_count = 0
-        read_name_count = defaultdict(int)
         for gene in tqdm(self.positions, desc='Getting read pairs: '):
-           for read in samfile.fetch(gene[0], gene[1], gene[2]):
+            for read in samfile.fetch(gene[0], gene[1], gene[2]):
                 total_read_count += 1
-                read_name_count[read.query_name] += 1
                 #second read in pair
                 if read.query_name in read_pairs_observed and read.query_name not in found_pairs:
                     found_pairs.add(read.query_name)
@@ -388,12 +386,13 @@ class SNVdata:
         too_short = 0
         too_long = 0
         for read_pair in found_pairs:
-           if insert_sizes[read_pair] > min_insert:
+            if insert_sizes[read_pair] > min_insert:
                 if insert_sizes[read_pair] < max_insert:
-                    filtered_reads.add(read_pair)
+                    if pair_mapqs[read_pair] > minimum_mapq:
+                        filtered_reads.add(read_pair)
                 else:
                     too_long += 2
-           else:
+            else:
                 too_short += 2
 
         print("median insert size: " + str(max_insert / 2))
@@ -403,7 +402,7 @@ class SNVdata:
         print("paired reads > " + str(max_insert) + " apart: " + str(too_long))
         print("reads which pass pair insert size filter: " + str(len(filtered_reads)*2))
 
-	# FOR TESTING: calculate insert sizes
+	    # FOR TESTING: calculate insert sizes
 
         if self.testing:
             self.positions = self.positions[0:10]
@@ -414,20 +413,21 @@ class SNVdata:
         for gene in tqdm(self.positions, desc='Finding SNVs ...'):
             scaff = gene[0]
             window = gene[0] + ":" + str(gene[1]) + ":" + str(gene[2])
-            for pileupcolumn in samfile.pileup(scaff, gene[1], gene[2]):
+            for pileupcolumn in samfile.pileup(scaff, gene[1], gene[2], truncate = True, stepper = 'samtools', compute_baq= True, ignore_orphans = True, ignore_overlaps = True,  min_base_quality = 30):
                 ## Step 1: Are there any reads at this position?
+               
                 position = scaff + "_" + str(pileupcolumn.pos)
-                counts = _get_base_counts(pileupcolumn, minimum_mapq = minimum_mapq, pair_mapqs = pair_mapqs)
+                counts = _get_base_counts(pileupcolumn, filtered_reads = filtered_reads)
 
                 consensus = False
                 # Yes there were reads at this position
                 if counts:
                     total_positions += 1
-                    pos_clonality = calculate_clonality(counts)
-                    clonality.append(pos_clonality)
-                    clonality_by_window[window].append(pos_clonality)
-                    consensus = call_snv_site(counts, min_cov = min_coverage, min_snp = min_snp)
-                    total_read_length += sum(counts)
+                    if sum(counts) > min_coverage:
+                        pos_clonality = calculate_clonality(counts)
+                        clonality_by_window[window].append([position, pos_clonality])
+                        consensus = call_snv_site(counts, min_cov = min_coverage, min_snp = min_snp)
+                        coverages.append(sum(counts))
 
                 ## Strep 2: Is there an SNV at this position?
                 if consensus:
@@ -440,7 +440,7 @@ class SNVdata:
                     for pileupread in pileupcolumn.pileups:
                         read_name = pileupread.alignment.query_name
                         if not pileupread.is_del and not pileupread.is_refskip:
-                            if pileupread.alignment.query_qualities[pileupread.query_position] >= 30 and pair_mapqs[read_name] >= minimum_mapq:
+                            if read_name in filtered_reads:
                                 try:
                                     val = pileupread.alignment.query_sequence[pileupread.query_position]
                                     #if value is not the consensus value
@@ -471,17 +471,30 @@ class SNVdata:
             snv_table['freq'].append(snvs_frequencies[snv])
         snv_table = pd.DataFrame(snv_table)
 
+        # Create clonality table
+        clonality_table = defaultdict(list)
+        for window in clonality_by_window:
+            for position_pair in clonality_by_window[window]:
+                clonality_table['scaffold'].append(window.split(":")[0])
+                clonality_table['window_name'].append(window)
+                clonality_table['position'].append(position_pair[0])
+                clonality_table['clonality'].append(position_pair[1])
+
+        clonality_table_final = pd.DataFrame(clonality_table)
+
+
         # Final statistics
         print("Total SNVs-sites: " + str(total_snv_sites))
         print("Total SNV-bases: " + str(alpha_snvs))
-        print("Mean clonality: " + str(float(sum(clonality)) / float(len(clonality)) ))
+        print("Mean clonality: " + str(float(sum(clonality_table['clonality'])) / float(len(clonality_table['clonality'])) ))
         print("Total sites: " + str(total_positions))
-        print("Total number of bases: " + str(total_read_length))
+        print("Mean coverage: " + str(float(sum(coverages)) / len(coverages)))
+        print("Total number of bases: " + str(sum(coverages)))
 
-        self.total_read_length = total_read_length
+        self.coverages = coverages
         self.alpha_snvs = alpha_snvs
         self.total_snv_sites = total_snv_sites
-        self.clonality = clonality_by_window
+        self.clonality_table = clonality_table_final
         self.snv_table = snv_table
         self.read_to_snvs = read_to_snvs
         self.total_positions = total_positions
