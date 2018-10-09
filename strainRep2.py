@@ -2,10 +2,11 @@
 
 '''
 Possible names for this program:
-* strainRep
-* blockStrain
-* destrain
-* instrain
+* strainRep - not a legit acronym
+* blockStrain - not a legit acronym
+* destrain - not a legit acronym
+* instrain - not a legit acronym
+* MIPS - metagenome interference of population structure - a legt acronym
 '''
 
 # Get the version
@@ -19,15 +20,16 @@ import pysam
 import pickle
 import argparse
 import itertools
-import networkx as nx
 import numpy as np
 import pandas as pd
+import networkx as nx
 from tqdm import tqdm
 from Bio import SeqIO
+from scipy import stats
 from collections import defaultdict
 from sklearn.decomposition import PCA
 
-def dominant_allele(snv, counts):
+def major_allele(snv, counts):
     d = {'A': counts[0], 'C': counts[1], 'T': counts[2], 'G': counts[3] }
     nucl = sorted(d, key=d.get, reverse=True)[0]
     return [snv + ":" + nucl, d[nucl]]
@@ -219,10 +221,98 @@ class SNVdata:
                     if not G_pos.has_edge(pair[0].split(":")[0], pair[1].split(":")[0]):
                         G_pos.add_edge(pair[0].split(":")[0], pair[1].split(":")[0])
 
+        print(str("Of " + str(self.total_snv_sites) + " SNP-sites, there were " + str(len(G_pos)) + " SNPs that could be linked to at least one other SNP."))
+        print(str("Of " + str(self.alpha_snvs) + " SNP-bases, there were " + str(len(G_pos)) + " SNPs that could be linked to at least one other SNP."))
+        print("The average SNP was linked to " + str(nx.average_neighbor_degree(G)) + " other SNPs.")
         self.snv_graph = G
         self.position_graph = G_pos
 
-    def calc_ld(self):
+
+    def calc_ld(self, snp_a, snp_b, min_snp):
+        '''
+        A function that calculates the LD between two SNPs
+        '''
+
+        #distance between snps
+        distance = abs(int(snp_a.split("_")[-1]) - int(snp_b.split("_")[-1]))
+
+        #calculate allele frequencies
+        allele_A = major_allele(snp_a,self.snv_counts[snp_a]) #get major allele
+        allele_a = minor_allele(snp_a,self.snv_counts[snp_a]) # get minor allele
+        freq_A = float(allele_A[1]) / (allele_A[1] + allele_a[1])
+        freq_a = float(allele_a[1]) / (allele_A[1] + allele_a[1])
+
+        # get snp B frequencies
+        allele_B = major_allele(snp_b,self.snv_counts[snp_b])
+        allele_b = minor_allele(snp_b,self.snv_counts[snp_b])
+        freq_B = float(allele_B[1]) / (allele_B[1] + allele_b[1])
+        freq_b = float(allele_b[1]) / (allele_B[1] + allele_b[1])
+
+        # Get frequencies of linkages
+        countAB, countAb, countaB, countab  = 0,0,0,0
+        if self.snv_graph.has_edge(allele_A[0], allele_B[0]):
+            countAB = self.snv_graph[allele_A[0]][allele_B[0]]['weight']
+        if self.snv_graph.has_edge(allele_A[0], allele_b[0]):
+            countAb = self.snv_graph[allele_A[0]][allele_b[0]]['weight']
+        if self.snv_graph.has_edge(allele_a[0], allele_B[0]):
+            countaB = self.snv_graph[allele_a[0]][allele_B[0]]['weight']
+        if self.snv_graph.has_edge(allele_a[0], allele_b[0]):
+            countab = self.snv_graph[allele_a[0]][allele_b[0]]['weight']
+
+        total = countAB + countAb + countaB + countab
+        
+        #Requires at least 10 linkages
+        if total > min_snp and total > 10:
+
+            linkage_points_x = []
+            linkage_points_y = []
+            for point in range(0,countAB):
+                linkage_points_x.append(1)
+                linkage_points_y.append(1)
+            for point in range(0,countAb):
+                linkage_points_x.append(1)
+                linkage_points_y.append(0)
+            for point in range(0,countaB):
+                linkage_points_x.append(0)
+                linkage_points_y.append(1)
+            for point in range(0,countab):
+                linkage_points_x.append(0)
+                linkage_points_y.append(0)
+
+            freq_AB = float(countAB) / total
+            freq_Ab = float(countAb) / total
+            freq_aB = float(countaB) / total
+            freq_ab = float(countab) / total
+
+            # Calculate linkage_D and linkage_d (major and minor alleles)
+            linkD = freq_AB - freq_A * freq_B
+            linkd = freq_ab - freq_a * freq_b
+            
+            # Calculate r^2
+            r2 = stats.pearsonr(linkage_points_x, linkage_points_y)[0]
+            if str(r2) != 'nan':
+                # print("**** DEBUG ****")
+                # print("freq_A " + str(freq_A))
+                # print("freq_a " + str(freq_a))
+                # print("freq_B " + str(freq_B))
+                # print("freq_b " + str(freq_b))
+
+                # print("countAB " + str(countAB))
+                # print("countAb " + str(countAb))
+                # print("countaB " + str(countaB))
+                # print("countab " + str(countab))
+                # print("total " + str(total))
+
+                # print("linkD " +str(linkD))
+                # print("linkd " + str(linkd))
+                # print("r2 " + str(r2))
+                # print(linkage_points_x)
+                # print(linkage_points_y)
+                return([distance, r2, linkD, linkd])
+        else:
+            return False
+
+    def calc_ld_all_sites(self, min_snp):
         '''
         Calculates Linkage Disequilibrium for all SNVs in a window.
         '''
@@ -237,68 +327,16 @@ class SNVdata:
             window_name = window[0] + ":" + str(window[1]) + ":" + str(window[2])
             window_snvs = self.windows_to_snvs[window_name]
 
-
             for edge in self.position_graph.edges(window_snvs):
                 snp_a = edge[0]
                 snp_b = edge[1]
-                allele_A = dominant_allele(snp_a,self.snv_counts[snp_a])
-                allele_a = minor_allele(snp_a,self.snv_counts[snp_a])
-
-                freq_A = float(allele_A[1]) / (allele_A[1] + allele_a[1])
-                freq_a = float(allele_a[1]) / (allele_A[1] + allele_a[1])
-
-                distance = abs(int(snp_a.split("_")[-1]) - int(snp_b.split("_")[-1]))
-                allele_B = dominant_allele(snp_b,self.snv_counts[snp_b])
-                allele_b = minor_allele(snp_b,self.snv_counts[snp_b])
-                
-                freq_B = float(allele_B[1]) / (allele_B[1] + allele_b[1])
-                freq_b = float(allele_b[1]) / (allele_B[1] + allele_b[1])
-
-                if self.snv_graph.has_edge(allele_A[0], allele_B[0]):
-                    countAB = self.snv_graph[allele_A[0]][allele_B[0]]['weight']
-                else:
-                    countAB = 0
-
-                if self.snv_graph.has_edge(allele_A[0], allele_b[0]):
-                    countAb = self.snv_graph[allele_A[0]][allele_b[0]]['weight']
-                else:
-                    countAb = 0
-
-                if self.snv_graph.has_edge(allele_a[0], allele_B[0]):
-                    countaB = self.snv_graph[allele_a[0]][allele_B[0]]['weight']
-                else:
-                    countaB = 0
-
-                if self.snv_graph.has_edge(allele_a[0], allele_b[0]):
-                    countab = self.snv_graph[allele_a[0]][allele_b[0]]['weight']
-                else:
-                    countab = 0
-
-                total = countAB + countAb + countaB + countab
-                # print("*************")
-                # print(self.position_graph[snp_a])
-                # print(self.position_graph[snp_b])
-                # print(allele_A)
-                # print(allele_B)
-                # print(allele_a)
-                # print(allele_b)
-                # print(total)
-                if total != 0:
-                    freq_AB = float(countAB) / total
-                    freq_Ab = float(countAb) / total
-                    freq_aB = float(countaB) / total
-                    freq_ab = float(countab) / total
-
-                    linkD = freq_ab - freq_a * freq_b
-                    # Calculate r^2
-
-                    r2 = linkD*linkD / (freq_a * (1 - freq_a) * freq_b * (1 - freq_b))
-
-                    r2_spectrum.append([distance,r2])
+                ld_result = self.calc_ld(snp_a, snp_b, min_snp)
+                if ld_result:
+                    r2_spectrum.append(ld_result)
+            
             r2_total[window_name] = r2_spectrum
         
         # Create r2 linkage table
-
         r2linkage_table = defaultdict(list)
 
         for window in r2_total:
@@ -306,6 +344,9 @@ class SNVdata:
                 r2linkage_table['Window'].append(window)
                 r2linkage_table['Distance'].append(datum[0])
                 r2linkage_table['r2'].append(datum[1])
+                r2linkage_table['linkD'].append(datum[2])
+                r2linkage_table['linkd'].append(datum[3])
+
         self.r2linkage_table = pd.DataFrame(r2linkage_table)
 
 
@@ -525,7 +566,7 @@ def main(args):
     strains.get_scaffold_positions(args.genes, args.fasta)
     strains.run_strain_profiler(args.bam, min_coverage = int(args.min_coverage), min_snp = int(args.min_snp))
     strains.calc_linkage_network()
-    strains.calc_ld()
+    strains.calc_ld_all_sites(int(args.min_snp))
     strains.save(args.output)
 
 if __name__ == '__main__':
