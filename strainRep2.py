@@ -222,8 +222,7 @@ class SNVdata:
                         G_pos.add_edge(pair[0].split(":")[0], pair[1].split(":")[0])
 
         print(str("Of " + str(self.total_snv_sites) + " SNP-sites, there were " + str(len(G_pos)) + " SNPs that could be linked to at least one other SNP."))
-        print(str("Of " + str(self.alpha_snvs) + " SNP-bases, there were " + str(len(G_pos)) + " SNPs that could be linked to at least one other SNP."))
-        print("The average SNP was linked to " + str(nx.average_neighbor_degree(G)) + " other SNPs.")
+        print("The average SNP was linked to " + str(int(np.mean(list(nx.average_neighbor_degree(G_pos).values())))) + " other SNPs.")
         self.snv_graph = G
         self.position_graph = G_pos
 
@@ -382,7 +381,7 @@ class SNVdata:
         windows_to_snvs = defaultdict(list)
         snv_counts = {}
 
-        coverages = []
+        coverages = {}
         total_snv_sites = 0
 
         ## Start reading BAM
@@ -468,7 +467,7 @@ class SNVdata:
                         pos_clonality = calculate_clonality(counts)
                         clonality_by_window[window].append([position, pos_clonality])
                         consensus = call_snv_site(counts, min_cov = min_coverage, min_snp = min_snp)
-                        coverages.append(sum(counts))
+                        coverages[position] = sum(counts)
 
                 ## Strep 2: Is there an SNV at this position?
                 if consensus:
@@ -520,6 +519,7 @@ class SNVdata:
                 clonality_table['window_name'].append(window)
                 clonality_table['position'].append(position_pair[0])
                 clonality_table['clonality'].append(position_pair[1])
+                clonality_table['coverage'].append(coverages[position_pair[0]])
 
         clonality_table_final = pd.DataFrame(clonality_table)
 
@@ -529,8 +529,8 @@ class SNVdata:
         print("Total SNV-bases: " + str(alpha_snvs))
         print("Mean clonality: " + str(float(sum(clonality_table['clonality'])) / float(len(clonality_table['clonality'])) ))
         print("Total sites: " + str(total_positions))
-        print("Mean coverage: " + str(float(sum(coverages)) / len(coverages)))
-        print("Total number of bases: " + str(sum(coverages)))
+        print("Mean coverage: " + str(float(sum(coverages.values())) / len(coverages)))
+        print("Total number of bases: " + str(sum(coverages.values())))
 
         self.coverages = coverages
         self.alpha_snvs = alpha_snvs
