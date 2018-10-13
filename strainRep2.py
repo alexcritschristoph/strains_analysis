@@ -222,7 +222,7 @@ class SNVdata:
                         G_pos.add_edge(pair[0].split(":")[0], pair[1].split(":")[0])
 
         print(str("Of " + str(self.total_snv_sites) + " SNP-sites, there were " + str(len(G_pos)) + " SNPs that could be linked to at least one other SNP."))
-        print("The average SNP was linked to " + str(int(np.mean(list(nx.average_neighbor_degree(G_pos).values())))) + " other SNPs.")
+        print("The average SNP was linked to " + str(int(np.mean(list(G_pos.degree())))) + " other SNPs.")
         self.snv_graph = G
         self.position_graph = G_pos
 
@@ -359,7 +359,7 @@ class SNVdata:
         pass
 
 
-    def run_strain_profiler(self, bam, min_coverage = 5, min_snp = 3):
+    def run_strain_profiler(self, bam, min_coverage = 5, min_snp = 3, filter_cutoff = 0):
         ''' 
         Main class for finding SNVs and generating data profile for a genome.
         '''
@@ -391,6 +391,8 @@ class SNVdata:
 
         print("READING BAM: " + bam.split("/")[-1])
 
+        print("Using reads with >" + str(filter_cutoff) + "% PID to consensus reference.")
+
         #Get mapping quality for paired reads
         #assumes that paired reads have the same "query name"
         #Is this a good assumption?
@@ -398,38 +400,61 @@ class SNVdata:
         insert_sizes = defaultdict(int)
         insert_sizes_r1 = defaultdict(lambda: -1)
         found_pairs = set()
-        read_pairs_observed = set()
+        observed_read1s = set()
+        observed_read2s = set()
+
+        # mismatches per read / read pair work
+        subset_reads = set()
+        read_pair_mismatches = {} 
+        read_pair_pid = {}
 
         total_read_count = 0
         for gene in tqdm(self.positions, desc='Getting read pairs: '):
+            
             for read in samfile.fetch(gene[0], gene[1], gene[2]):
                 total_read_count += 1
+
                 #second read in pair
-                if read.query_name in read_pairs_observed and read.query_name not in found_pairs:
-                    found_pairs.add(read.query_name)
-                    if read.get_reference_positions() != [] and insert_sizes_r1[read.query_name] != -1:
-                        insert_sizes[read.query_name] = read.get_reference_positions()[-1] - insert_sizes_r1[read.query_name]
-#                        print(insert_sizes[read.query_name])
+                if (read.is_read2 and read.query_name in observed_read1s) or (read.is_read1 and read.query_name in observed_read2s):
+                    if read.query_name not in found_pairs:
+                        if read.get_reference_positions() != [] and insert_sizes_r1[read.query_name] != -1:
+                            found_pairs.add(read.query_name)
+                            read_pair_pid[read.query_name] = 1-(float(read_pair_mismatches[read.query_name][0]) + float(read.get_tag('NM'))) / ( float(read_pair_mismatches[read.query_name][1]) + read.infer_query_length())
+                            insert_sizes[read.query_name] = read.get_reference_positions()[-1] - insert_sizes_r1[read.query_name]
+                
                 #this is the first read in a pair
                 else:
+
+
                     if read.get_reference_positions() != []:
-                        insert_sizes_r1[read.query_name] = read.get_reference_positions()[0]
-                    read_pairs_observed.add(read.query_name)
-                if pair_mapqs[read.query_name] < read.mapping_quality:
-                    pair_mapqs[read.query_name] = read.mapping_quality
+                            insert_sizes_r1[read.query_name] = read.get_reference_positions()[0]
+                            if read.is_read1:
+                                observed_read1s.add(read.query_name)
+                            else:
+                                observed_read2s.add(read.query_name)
+
+                            read_pair_mismatches[read.query_name] = [read.get_tag('NM'), read.infer_query_length()]
+
+                            if pair_mapqs[read.query_name] < read.mapping_quality:
+                                pair_mapqs[read.query_name] = read.mapping_quality
+
 
         min_insert = 50 # paired reads must be 50 bp apart
         max_insert = np.median(list(insert_sizes.values())) * 2 # they can't be more than 2 * apart as the average
 
 
-        filtered_reads = set()
         too_short = 0
         too_long = 0
+        good_length = 0
         for read_pair in found_pairs:
             if insert_sizes[read_pair] > min_insert:
                 if insert_sizes[read_pair] < max_insert:
                     if pair_mapqs[read_pair] > minimum_mapq:
-                        filtered_reads.add(read_pair)
+                        good_length += 1
+
+                        # Which set does this read go into?
+                        if read_pair_pid[read_pair] > filter_cutoff:
+                            subset_reads.add(read_pair)
                 else:
                     too_long += 2
             else:
@@ -440,7 +465,8 @@ class SNVdata:
         print("reads with pair found: " + str(len(found_pairs) * 2))
         print("paired reads < 50 bp apart: " + str(too_short))
         print("paired reads > " + str(max_insert) + " apart: " + str(too_long))
-        print("reads which pass pair insert size filter: " + str(len(filtered_reads)*2))
+        print("reads which pass pair insert size filter: " + str(good_length*2))
+        print("reads which pass read pair PID >" + str(filter_cutoff) + "%: " + str(len(subset_reads)*2))
 
 	    # FOR TESTING: calculate insert sizes
 
@@ -449,7 +475,7 @@ class SNVdata:
 
         ### START SNP FINDING
 
-        ## Start looping through each region            
+        ## Start looping through each region  
         for gene in tqdm(self.positions, desc='Finding SNVs ...'):
             scaff = gene[0]
             window = gene[0] + ":" + str(gene[1]) + ":" + str(gene[2])
@@ -457,7 +483,7 @@ class SNVdata:
                 ## Step 1: Are there any reads at this position?
                
                 position = scaff + "_" + str(pileupcolumn.pos)
-                counts = _get_base_counts(pileupcolumn, filtered_reads = filtered_reads)
+                counts = _get_base_counts(pileupcolumn, filtered_reads = subset_reads)
 
                 consensus = False
                 # Yes there were reads at this position
@@ -480,7 +506,7 @@ class SNVdata:
                     for pileupread in pileupcolumn.pileups:
                         read_name = pileupread.alignment.query_name
                         if not pileupread.is_del and not pileupread.is_refskip:
-                            if read_name in filtered_reads:
+                            if read_name in subset_reads:
                                 try:
                                     val = pileupread.alignment.query_sequence[pileupread.query_position]
                                     #if value is not the consensus value
@@ -491,7 +517,6 @@ class SNVdata:
                                             alpha_snvs += 1
                                 except KeyError: # This would be like an N or something not A/C/T/G
                                     pass
-
 
                     # Add to frequencies
                     nucl_count = 0
@@ -547,12 +572,7 @@ class SNVdata:
 
 ####### END STRAINPROFILER CLASS
 ################################
-
-def main(args):
-    '''
-    Main entry point
-    '''
-
+def strain_pipeline(args, filter_cutoff):
     strains = SNVdata()
 
     if args.testing:
@@ -563,11 +583,26 @@ def main(args):
     else:
         strains.output = args.output
 
+
+    print("Running at resolution: (>" + str(filter_cutoff) + "%)")
     strains.get_scaffold_positions(args.genes, args.fasta)
-    strains.run_strain_profiler(args.bam, min_coverage = int(args.min_coverage), min_snp = int(args.min_snp))
+    strains.run_strain_profiler(args.bam, min_coverage = int(args.min_coverage), min_snp = int(args.min_snp), filter_cutoff = filter_cutoff)
     strains.calc_linkage_network()
     strains.calc_ld_all_sites(int(args.min_snp))
-    strains.save(args.output)
+    strains.save(args.output + "_" + str(filter_cutoff))
+
+def main(args):
+    '''
+    Main entry point
+    '''
+
+    strain_pipeline(args, 0.99)
+    strain_pipeline(args, 0.98)
+    strain_pipeline(args, 0.97)
+    strain_pipeline(args, 0.90)
+    strain_pipeline(args, 0)
+
+
 
 if __name__ == '__main__':
     """ This is executed when run from the command line """
