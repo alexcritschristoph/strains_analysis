@@ -222,7 +222,7 @@ class SNVdata:
                         G_pos.add_edge(pair[0].split(":")[0], pair[1].split(":")[0])
 
         print(str("Of " + str(self.total_snv_sites) + " SNP-sites, there were " + str(len(G_pos)) + " SNPs that could be linked to at least one other SNP."))
-        print("The average SNP was linked to " + str(int(np.mean(list(G_pos.degree())))) + " other SNPs.")
+        print("The average SNP was linked to " + str(int(np.mean([x[1] for x in list(G_pos.degree())]))) + " other SNPs.")
         self.snv_graph = G
         self.position_graph = G_pos
 
@@ -579,9 +579,9 @@ def strain_pipeline(args, filter_cutoff):
         strains.testing = True
 
     if not args.output:
-        strains.output = args.fasta.split("/")[-1].split(".")[0]
+        strains.output = args.fasta.split("/")[-1].split(".")[0] + "_" + str(filter_cutoff)
     else:
-        strains.output = args.output
+        strains.output = args.output + "_" + str(filter_cutoff)
 
 
     print("Running at resolution: (>" + str(filter_cutoff) + "%)")
@@ -589,7 +589,7 @@ def strain_pipeline(args, filter_cutoff):
     strains.run_strain_profiler(args.bam, min_coverage = int(args.min_coverage), min_snp = int(args.min_snp), filter_cutoff = filter_cutoff)
     strains.calc_linkage_network()
     strains.calc_ld_all_sites(int(args.min_snp))
-    strains.save(args.output + "_" + str(filter_cutoff))
+    strains.save()
 
 def main(args):
     '''
