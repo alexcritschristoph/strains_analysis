@@ -524,7 +524,7 @@ class SNVdata:
                         if nucl >= min_snp:
                             freq = float(nucl) / float(sum(counts))
                             snp = position + ":" + C2P[nucl_count]
-                            snvs_frequencies[snp] = freq
+                            snvs_frequencies[snp] = [freq, window]
 
                         nucl_count += 1 
 
@@ -533,7 +533,8 @@ class SNVdata:
         snv_table = defaultdict(list)
         for snv in snvs_frequencies:
             snv_table['SNV'].append(snv)
-            snv_table['freq'].append(snvs_frequencies[snv])
+            snv_table['freq'].append(snvs_frequencies[snv][0])
+            snv_table['Window'].append(snvs_frequencies[snv][1])
         snv_table = pd.DataFrame(snv_table)
 
         # Create clonality table
@@ -596,9 +597,10 @@ def main(args):
     Main entry point
     '''
 
-    strain_pipeline(args, 0.99)
     strain_pipeline(args, 0.98)
-    strain_pipeline(args, 0.97)
+    strain_pipeline(args, 0.96)
+    strain_pipeline(args, 0.94)
+    strain_pipeline(args, 0.92)
     strain_pipeline(args, 0.90)
     strain_pipeline(args, 0)
 
