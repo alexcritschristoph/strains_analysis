@@ -203,6 +203,9 @@ class SNVdata:
 
         self.fasta = fasta_file
 
+    def get_snps_per_gene(self, gene_file = None):
+        pass
+
     def calc_linkage_network(self):
         ''' Calculates the SNV linkage network - saves it as a dictionary of edges in self.snv_net. 
         Writes it out to a file, genome.net for reading in through other programs like node2vec
