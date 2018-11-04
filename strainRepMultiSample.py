@@ -15,6 +15,7 @@ from _version import __version__
 # Import
 import csv
 import sys
+import glob
 import math
 import pysam
 import pickle
@@ -652,7 +653,11 @@ def strain_pipeline(args, filter_cutoff):
     else:
         strains.output = args.output + "_" + str(filter_cutoff)
 
-    bams = args.bams.split(",")
+    if '*' in args.bam:
+        bams = glob.glob(args.bam) 
+    else:
+        bams = args.bams.split(",")
+    
     print("Running at resolution: (>" + str(filter_cutoff) + "%)")
     strains.get_scaffold_positions(args.genes, args.fasta)
     strains.run_strain_profiler(bams, min_coverage = int(args.min_coverage), min_snp = int(args.min_snp), filter_cutoff = filter_cutoff)
