@@ -653,8 +653,8 @@ def strain_pipeline(args, filter_cutoff):
     else:
         strains.output = args.output + "_" + str(filter_cutoff)
 
-    if '*' in args.bam:
-        bams = glob.glob(args.bam) 
+    if '*' in args.bams:
+        bams = glob.glob(args.bams) 
     else:
         bams = args.bams.split(",")
     
