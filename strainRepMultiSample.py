@@ -666,12 +666,19 @@ def main(args):
     Main entry point
     '''
 
-    strain_pipeline(args, 0.98)
-    strain_pipeline(args, 0.96)
-    strain_pipeline(args, 0.94)
-    strain_pipeline(args, 0.92)
-    strain_pipeline(args, 0.90)
-    strain_pipeline(args, 0)
+    if args.level:
+        if float(args.level) < 1:
+            strain_pipeline(args, float(args.level))
+        else:
+            print("Error: Strain level should be a number between 0 and 1.")
+            sys.exit(1)
+    else:
+        strain_pipeline(args, 0.98)
+        strain_pipeline(args, 0.96)
+        strain_pipeline(args, 0.94)
+        strain_pipeline(args, 0.92)
+        strain_pipeline(args, 0.90)
+        strain_pipeline(args, 0)
 
 
 
@@ -692,6 +699,8 @@ if __name__ == '__main__':
         help='Minimum SNV coverage')
     parser.add_argument("-s", "--min_snp", action="store", default=3, \
         help='Minimum number of reads to confirm a SNV')
+    parser.add_argument("-l", "--level", action="store", default=None, \
+        help='Minimum percent identity of read pairs to consensus to use the reads - default is to run at 90, 92, 94, 96, 98, and 100')
 
     parser.add_argument('--testing', action='store_true', default=False, \
         help ="Testing command runs only on first 10 contigs to run faster.")
