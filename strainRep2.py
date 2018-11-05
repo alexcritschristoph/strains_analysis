@@ -288,12 +288,14 @@ class SNVdata:
 
             # Calculate linkage_D and linkage_d (major and minor alleles)
             linkD = freq_AB - freq_A * freq_B
+            r2_book = linkD*linkD / (freq_A * freq_a * freq_B * freq_b)
+
             linkd = freq_ab - freq_a * freq_b
             
             # Calculate r^2
             r2 = stats.pearsonr(linkage_points_x, linkage_points_y)[0]
             if str(r2) != 'nan':
-                return([distance, r2, linkD, linkd])
+                return([distance, r2, linkD, linkd, r2_book])
             # else:
             #     print("nan")
             # else:
@@ -351,6 +353,7 @@ class SNVdata:
                 r2linkage_table['r2'].append(datum[1])
                 r2linkage_table['linkD'].append(datum[2])
                 r2linkage_table['linkd'].append(datum[3])
+                r2linkage_table['r2_book'].append(datum[4])
 
         self.r2linkage_table = pd.DataFrame(r2linkage_table)
 
