@@ -293,24 +293,27 @@ class SNVdata:
             # Calculate r^2
             r2 = stats.pearsonr(linkage_points_x, linkage_points_y)[0]
             if str(r2) != 'nan':
-                # print("**** DEBUG ****")
-                # print("freq_A " + str(freq_A))
-                # print("freq_a " + str(freq_a))
-                # print("freq_B " + str(freq_B))
-                # print("freq_b " + str(freq_b))
-
-                # print("countAB " + str(countAB))
-                # print("countAb " + str(countAb))
-                # print("countaB " + str(countaB))
-                # print("countab " + str(countab))
-                # print("total " + str(total))
-
-                # print("linkD " +str(linkD))
-                # print("linkd " + str(linkd))
-                # print("r2 " + str(r2))
-                # print(linkage_points_x)
-                # print(linkage_points_y)
                 return([distance, r2, linkD, linkd])
+            # else:
+            #     print("nan")
+            # else:
+            #     print("**** DEBUG ****")
+            #     print("freq_A " + str(freq_A))
+            #     print("freq_a " + str(freq_a))
+            #     print("freq_B " + str(freq_B))
+            #     print("freq_b " + str(freq_b))
+
+            #     print("countAB " + str(countAB))
+            #     print("countAb " + str(countAb))
+            #     print("countaB " + str(countaB))
+            #     print("countab " + str(countab))
+            #     print("total " + str(total))
+
+            #     print("linkD " +str(linkD))
+            #     print("linkd " + str(linkd))
+            #     print("r2 " + str(r2))
+            #     print(linkage_points_x)
+            #     print(linkage_points_y)
         else:
             return False
 
@@ -471,7 +474,7 @@ class SNVdata:
         print("reads which pass pair insert size filter: " + str(good_length*2))
         print("reads which pass read pair PID >" + str(filter_cutoff) + "%: " + str(len(subset_reads)*2))
 
-	    # FOR TESTING: calculate insert sizes
+        # FOR TESTING: calculate insert sizes
 
         if self.testing:
             self.positions = self.positions[0:10]
@@ -600,12 +603,12 @@ def main(args):
     Main entry point
     '''
 
-    strain_pipeline(args, 0.98)
-    strain_pipeline(args, 0.96)
-    strain_pipeline(args, 0.94)
-    strain_pipeline(args, 0.92)
+    # strain_pipeline(args, 0.98)
+    # strain_pipeline(args, 0.96)
+    # strain_pipeline(args, 0.94)
+    # strain_pipeline(args, 0.92)
     strain_pipeline(args, 0.90)
-    strain_pipeline(args, 0)
+    # strain_pipeline(args, 0)
 
 
 
@@ -640,5 +643,3 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     main(args)
-
-

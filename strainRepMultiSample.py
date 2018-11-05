@@ -382,7 +382,7 @@ class SNVdata:
         total_positions = 0
         read_to_snvs = defaultdict(list)
         snvs_frequencies = defaultdict(dict)
-        clonality_by_window = defaultdict(dict)
+        clonality_by_window = defaultdict(lambda: defaultdict(dict))
         windows_to_snvs = defaultdict(list)
         snv_counts = {}
 
@@ -535,10 +535,7 @@ class SNVdata:
                         total_positions += 1
                         if sum(counts) > min_coverage:
                             pos_clonality = calculate_clonality(counts)
-                            if sample in clonality_by_window[window]:
-                                clonality_by_window[window][sample].append([position, pos_clonality])
-                            else:
-                                clonality_by_window[window][sample] = [[position, pos_clonality]]
+                            clonality_by_window[window][position][sample] = pos_clonality
                             consensus = call_snv_site(counts_sum_by_bam[position], min_cov = min_coverage, min_snp = min_snp)
                             coverages[position][sample] = sum(counts)
 
@@ -580,33 +577,32 @@ class SNVdata:
         # Create SNV frequency table
         snv_table = defaultdict(list)
         for snv in snvs_frequencies:
-            for sample in snvs_frequencies[snv]:
-                snv_table['SNV'].append(snv)
-                snv_table['sample'].append(sample)
-                for bam in bams:
-                    sample = bam.split("/")[-1].split(".bam")[0]
-                    if sample in snvs_frequencies[snv]:
-                        snv_table[sample].append(snvs_frequencies[snv][sample][0])
-                    else:
-                        snv_table[sample].append(0)
-                snv_table['Window'].append(snvs_frequencies[snp][sample][1])
+            snv_table['SNV'].append(snv)
+            for bam in bams:
+                sample = bam.split("/")[-1].split(".bam")[0]
+                if sample in snvs_frequencies[snv]:
+                    snv_table[sample].append(snvs_frequencies[snv][sample][0])
+                else:
+                    snv_table[sample].append(0)
+            snv_table['Window'].append(snvs_frequencies[snp][sample][1])
 
         snv_table = pd.DataFrame(snv_table)
 
         # Create clonality table
         clonality_table = defaultdict(list)
         for window in clonality_by_window:
-            for position_pair in clonality_by_window[window]:
+            for position in clonality_by_window[window]:
                 clonality_table['scaffold'].append(window.split(":")[0])
                 clonality_table['window_name'].append(window)
-                clonality_table['position'].append(position_pair[0])
+                clonality_table['position'].append(position)
+
                 for bam in bams:
                     sample = bam.split("/")[-1].split(".bam")[0]
-                    if sample in clonality_by_window[window]:
-                        clonality_table[sample].append(position_pair[1])
-                        clonality_table[sample + '_coverage'].append(coverages[position_pair[0]])
+                    if sample in coverages[position]:
+                        clonality_table[sample + '_clonality'].append(clonality_by_window[window][position][sample])
+                        clonality_table[sample + '_coverage'].append(coverages[position][sample])
                     else:
-                        clonality_table[sample].append(np.nan)
+                        clonality_table[sample + '_clonality'].append(-1)           
                         clonality_table[sample + '_coverage'].append(0)
 
 
