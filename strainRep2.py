@@ -318,7 +318,9 @@ class SNVdata:
             linkd = freq_ab - freq_a * freq_b
 
             r2 = stats.pearsonr(linkage_points_x, linkage_points_y)[0]
-
+            r2 = r2 * r2
+            # print(r2)
+            # print(r2_book)
             return([distance, r2, linkD, linkd, r2_book, total, countAB, countAb, countaB, countab])
             # else:
             #     print("nan")
@@ -359,8 +361,8 @@ class SNVdata:
                 r2linkage_table['Distance'].append(datum[0])
                 r2linkage_table['r2'].append(datum[1])
                 r2linkage_table['linkD'].append(datum[2])
-                r2linkage_table['linkd'].append(datum[3])
-                r2linkage_table['r2_book'].append(datum[4])
+                # r2linkage_table['linkd'].append(datum[3])
+                # r2linkage_table['r2_book'].append(datum[4])
                 r2linkage_table['total'].append(datum[5])
                 r2linkage_table['count_AB'].append(datum[6])
                 r2linkage_table['count_Ab'].append(datum[7])
