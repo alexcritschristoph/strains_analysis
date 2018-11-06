@@ -263,8 +263,8 @@ class SNVdata:
 
         total = countAB + countAb + countaB + countab
         
-        #Requires at least 10 linkages
-        if total > min_snp and total > 10:
+        #Requires at least min_snp
+        if total > min_snp:
 
             linkage_points_x = []
             linkage_points_y = []
@@ -286,36 +286,43 @@ class SNVdata:
             freq_aB = float(countaB) / total
             freq_ab = float(countab) / total
 
-            # Calculate linkage_D and linkage_d (major and minor alleles)
+            freq_A = freq_AB + freq_Ab 
+            freq_a = freq_ab + freq_aB 
+            freq_B = freq_AB + freq_aB 
+            freq_b = freq_ab + freq_Ab
+
+            # # Calculate linkage_D and linkage_d (major and minor alleles)
+            # print("**** DEBUG ****")
+            # print(allele_A)
+            # print(allele_a)
+            # print("freq_A " + str(freq_A))
+            # print("freq_a " + str(freq_a))
+            # print("freq_B " + str(freq_B))
+            # print("freq_b " + str(freq_b))
+
+            # print("countAB " + str(countAB))
+            # print("countAb " + str(countAb))
+            # print("countaB " + str(countaB))
+            # print("countab " + str(countab))
+            # print("total " + str(total))
+
+
             linkD = freq_AB - freq_A * freq_B
-            r2_book = linkD*linkD / (freq_A * freq_a * freq_B * freq_b)
+
+            if freq_a == 0 or freq_A == 0 or freq_B == 0 or freq_b == 0:
+                r2_book = np.nan
+            else:
+                r2_book = linkD*linkD / (freq_A * freq_a * freq_B * freq_b)
+
 
             linkd = freq_ab - freq_a * freq_b
-            
-            # Calculate r^2
+
             r2 = stats.pearsonr(linkage_points_x, linkage_points_y)[0]
-            if str(r2) != 'nan':
-                return([distance, r2, linkD, linkd, r2_book])
+
+            return([distance, r2, linkD, linkd, r2_book, total, countAB, countAb, countaB, countab])
             # else:
             #     print("nan")
             # else:
-            #     print("**** DEBUG ****")
-            #     print("freq_A " + str(freq_A))
-            #     print("freq_a " + str(freq_a))
-            #     print("freq_B " + str(freq_B))
-            #     print("freq_b " + str(freq_b))
-
-            #     print("countAB " + str(countAB))
-            #     print("countAb " + str(countAb))
-            #     print("countaB " + str(countaB))
-            #     print("countab " + str(countab))
-            #     print("total " + str(total))
-
-            #     print("linkD " +str(linkD))
-            #     print("linkd " + str(linkd))
-            #     print("r2 " + str(r2))
-            #     print(linkage_points_x)
-            #     print(linkage_points_y)
         else:
             return False
 
@@ -354,6 +361,22 @@ class SNVdata:
                 r2linkage_table['linkD'].append(datum[2])
                 r2linkage_table['linkd'].append(datum[3])
                 r2linkage_table['r2_book'].append(datum[4])
+                r2linkage_table['total'].append(datum[5])
+                r2linkage_table['count_AB'].append(datum[6])
+                r2linkage_table['count_Ab'].append(datum[7])
+                r2linkage_table['count_aB'].append(datum[8])
+                r2linkage_table['count_ab'].append(datum[9])
+
+                # r2linkage_table['snp_a']
+                # r2linkage_table['snp_b']
+                # r2linkage_table['freq_A']
+                # r2linkage_table['freq_a']
+                # r2linkage_table['freq_B']
+                # r2linkage_table['freq_B']
+                # r2linkage_table['freq_b']
+                # r2linkage_table['snp_a']
+                # r2linkage_table['snp_a']
+
 
         self.r2linkage_table = pd.DataFrame(r2linkage_table)
 
