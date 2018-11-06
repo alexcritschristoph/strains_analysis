@@ -321,7 +321,7 @@ class SNVdata:
             r2 = r2 * r2
             # print(r2)
             # print(r2_book)
-            return([distance, r2, linkD, linkd, r2_book, total, countAB, countAb, countaB, countab])
+            return([distance, r2, linkD, linkd, r2_book, total, countAB, countAb, countaB, countab, allele_A, allele_a, allele_B, allele_b])
             # else:
             #     print("nan")
             # else:
@@ -368,6 +368,11 @@ class SNVdata:
                 r2linkage_table['count_Ab'].append(datum[7])
                 r2linkage_table['count_aB'].append(datum[8])
                 r2linkage_table['count_ab'].append(datum[9])
+
+                r2linkage_table['total_A'].append(datum[10])
+                r2linkage_table['total_a'].append(datum[11])
+                r2linkage_table['total_B'].append(datum[12])
+                r2linkage_table['total_b'].append(datum[13])
 
                 # r2linkage_table['snp_a']
                 # r2linkage_table['snp_b']
