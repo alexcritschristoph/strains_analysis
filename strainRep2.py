@@ -28,6 +28,8 @@ from Bio import SeqIO
 from scipy import stats
 from collections import defaultdict
 from sklearn.decomposition import PCA
+## local imports
+from filter_reads import filter_reads
 
 def major_allele(snv, counts):
     d = {'A': counts[0], 'C': counts[1], 'T': counts[2], 'G': counts[3] }
@@ -291,22 +293,6 @@ class SNVdata:
             freq_B = freq_AB + freq_aB 
             freq_b = freq_ab + freq_Ab
 
-            # # Calculate linkage_D and linkage_d (major and minor alleles)
-            # print("**** DEBUG ****")
-            # print(allele_A)
-            # print(allele_a)
-            # print("freq_A " + str(freq_A))
-            # print("freq_a " + str(freq_a))
-            # print("freq_B " + str(freq_B))
-            # print("freq_b " + str(freq_b))
-
-            # print("countAB " + str(countAB))
-            # print("countAb " + str(countAb))
-            # print("countaB " + str(countaB))
-            # print("countab " + str(countab))
-            # print("total " + str(total))
-
-
             linkD = freq_AB - freq_A * freq_B
 
             if freq_a == 0 or freq_A == 0 or freq_B == 0 or freq_b == 0:
@@ -317,10 +303,11 @@ class SNVdata:
 
             linkd = freq_ab - freq_a * freq_b
 
-            r2 = stats.pearsonr(linkage_points_x, linkage_points_y)[0]
-            r2 = r2 * r2
+            # r2 = stats.pearsonr(linkage_points_x, linkage_points_y)[0]
+            # r2 = r2 * r2
             # print(r2)
             # print(r2_book)
+            r2 = r2_book
             return([distance, r2, linkD, linkd, r2_book, total, countAB, countAb, countaB, countab, allele_A, allele_a, allele_B, allele_b])
             # else:
             #     print("nan")
@@ -374,28 +361,8 @@ class SNVdata:
                 r2linkage_table['total_B'].append(datum[12])
                 r2linkage_table['total_b'].append(datum[13])
 
-                # r2linkage_table['snp_a']
-                # r2linkage_table['snp_b']
-                # r2linkage_table['freq_A']
-                # r2linkage_table['freq_a']
-                # r2linkage_table['freq_B']
-                # r2linkage_table['freq_B']
-                # r2linkage_table['freq_b']
-                # r2linkage_table['snp_a']
-                # r2linkage_table['snp_a']
-
 
         self.r2linkage_table = pd.DataFrame(r2linkage_table)
-
-
-
-
-    def calc_network_structure(self, genome):
-        '''runs node2vec on a graph'''
-        pass
-
-    def plot(self, viz_type = None):
-        pass
 
 
     def run_strain_profiler(self, bam, min_coverage = 5, min_snp = 3, filter_cutoff = 0):
@@ -406,111 +373,29 @@ class SNVdata:
         minimum_mapq = 2
         P2C = {'A':0, 'C':1, 'T':2, 'G':3}
         C2P = {0:'A', 1:'C', 2:'T', 3:'G'}
-        global mate_pair_mappings
-
-        # Where will we be looking at SNPs?
 
         #Set up variables
-        raw_counts_data = defaultdict(dict) # Set up SNP table
         alpha_snvs = 0
         total_positions = 0
+        total_snv_sites = 0
+
+        raw_counts_data = defaultdict(dict) # Set up SNP table
         read_to_snvs = defaultdict(list)
         snvs_frequencies = defaultdict(int)
         clonality_by_window = defaultdict(list)
         windows_to_snvs = defaultdict(list)
         snv_counts = {}
-
         coverages = {}
-        total_snv_sites = 0
 
         ## Start reading BAM
-
         samfile = pysam.AlignmentFile(bam)
         sample = bam.split("/")[-1].split(".bam")[0]
 
-        print("READING BAM: " + bam.split("/")[-1])
-
-        print("Using reads with >" + str(filter_cutoff) + "% PID to consensus reference.")
-
-        #Get mapping quality for paired reads
-        #assumes that paired reads have the same "query name"
-        #Is this a good assumption?
-        pair_mapqs = defaultdict(int)
-        insert_sizes = defaultdict(int)
-        insert_sizes_r1 = defaultdict(lambda: -1)
-        found_pairs = set()
-        observed_read1s = set()
-        observed_read2s = set()
-
-        # mismatches per read / read pair work
-        subset_reads = set()
-        read_pair_mismatches = {} 
-        read_pair_pid = {}
-
-        total_read_count = 0
-        for gene in tqdm(self.positions, desc='Getting read pairs: '):
-            
-            for read in samfile.fetch(gene[0], gene[1], gene[2]):
-                total_read_count += 1
-
-                #second read in pair
-                if (read.is_read2 and read.query_name in observed_read1s) or (read.is_read1 and read.query_name in observed_read2s):
-                    if read.query_name not in found_pairs:
-                        if read.get_reference_positions() != [] and insert_sizes_r1[read.query_name] != -1:
-                            found_pairs.add(read.query_name)
-                            read_pair_pid[read.query_name] = 1-(float(read_pair_mismatches[read.query_name][0]) + float(read.get_tag('NM'))) / ( float(read_pair_mismatches[read.query_name][1]) + read.infer_query_length())
-                            insert_sizes[read.query_name] = read.get_reference_positions()[-1] - insert_sizes_r1[read.query_name]
-                
-                #this is the first read in a pair
-                else:
-
-
-                    if read.get_reference_positions() != []:
-                            insert_sizes_r1[read.query_name] = read.get_reference_positions()[0]
-                            if read.is_read1:
-                                observed_read1s.add(read.query_name)
-                            else:
-                                observed_read2s.add(read.query_name)
-
-                            read_pair_mismatches[read.query_name] = [read.get_tag('NM'), read.infer_query_length()]
-
-                            if pair_mapqs[read.query_name] < read.mapping_quality:
-                                pair_mapqs[read.query_name] = read.mapping_quality
-
-
-        min_insert = 50 # paired reads must be 50 bp apart
-        max_insert = np.median(list(insert_sizes.values())) * 2 # they can't be more than 2 * apart as the average
-
-
-        too_short = 0
-        too_long = 0
-        good_length = 0
-        for read_pair in found_pairs:
-            if insert_sizes[read_pair] > min_insert:
-                if insert_sizes[read_pair] < max_insert:
-                    if pair_mapqs[read_pair] > minimum_mapq:
-                        good_length += 1
-
-                        # Which set does this read go into?
-                        if read_pair_pid[read_pair] > filter_cutoff:
-                            subset_reads.add(read_pair)
-                else:
-                    too_long += 2
-            else:
-                too_short += 2
-
-        print("median insert size: " + str(max_insert / 2))
-        print("total reads found: " + str(total_read_count))
-        print("reads with pair found: " + str(len(found_pairs) * 2))
-        print("paired reads < 50 bp apart: " + str(too_short))
-        print("paired reads > " + str(max_insert) + " apart: " + str(too_long))
-        print("reads which pass pair insert size filter: " + str(good_length*2))
-        print("reads which pass read pair PID >" + str(filter_cutoff) + "%: " + str(len(subset_reads)*2))
-
-        # FOR TESTING: calculate insert sizes
-
         if self.testing:
             self.positions = self.positions[0:10]
+
+        # Call read filtering function
+        subset_reads = filter_reads(bam, self.positions, filter_cutoff, 3, 50, 2)
 
         ### START SNP FINDING
 
