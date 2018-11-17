@@ -29,6 +29,8 @@ from Bio import SeqIO
 from scipy import stats
 from collections import defaultdict
 from sklearn.decomposition import PCA
+## local imports
+from filter_reads import filter_reads
 
 def major_allele(snv, counts):
     d = {'A': counts[0], 'C': counts[1], 'T': counts[2], 'G': counts[3] }
@@ -264,8 +266,8 @@ class SNVdata:
 
         total = countAB + countAb + countaB + countab
         
-        #Requires at least 10 linkages
-        if total > min_snp and total > 10:
+        #Requires at least min_snp
+        if total > min_snp:
 
             linkage_points_x = []
             linkage_points_y = []
@@ -287,31 +289,30 @@ class SNVdata:
             freq_aB = float(countaB) / total
             freq_ab = float(countab) / total
 
-            # Calculate linkage_D and linkage_d (major and minor alleles)
+            freq_A = freq_AB + freq_Ab 
+            freq_a = freq_ab + freq_aB 
+            freq_B = freq_AB + freq_aB 
+            freq_b = freq_ab + freq_Ab
+
             linkD = freq_AB - freq_A * freq_B
+
+            if freq_a == 0 or freq_A == 0 or freq_B == 0 or freq_b == 0:
+                r2_book = np.nan
+            else:
+                r2_book = linkD*linkD / (freq_A * freq_a * freq_B * freq_b)
+
+
             linkd = freq_ab - freq_a * freq_b
-            
-            # Calculate r^2
-            r2 = stats.pearsonr(linkage_points_x, linkage_points_y)[0]
-            if str(r2) != 'nan':
-                # print("**** DEBUG ****")
-                # print("freq_A " + str(freq_A))
-                # print("freq_a " + str(freq_a))
-                # print("freq_B " + str(freq_B))
-                # print("freq_b " + str(freq_b))
 
-                # print("countAB " + str(countAB))
-                # print("countAb " + str(countAb))
-                # print("countaB " + str(countaB))
-                # print("countab " + str(countab))
-                # print("total " + str(total))
-
-                # print("linkD " +str(linkD))
-                # print("linkd " + str(linkd))
-                # print("r2 " + str(r2))
-                # print(linkage_points_x)
-                # print(linkage_points_y)
-                return([distance, r2, linkD, linkd])
+            # r2 = stats.pearsonr(linkage_points_x, linkage_points_y)[0]
+            # r2 = r2 * r2
+            # print(r2)
+            # print(r2_book)
+            r2 = r2_book
+            return([distance, r2, linkD, linkd, r2_book, total, countAB, countAb, countaB, countab, allele_A, allele_a, allele_B, allele_b])
+            # else:
+            #     print("nan")
+            # else:
         else:
             return False
 
@@ -390,14 +391,14 @@ class SNVdata:
         total_snv_sites = 0
 
         # FOR TESTING: calculate insert sizes
-
         if self.testing:
             self.positions = self.positions[0:10]
 
 
+        #cross-bam count objects
         counts_sum_by_bam = {}
         counts_data_by_bam = defaultdict(dict)
-        filtered_reads_by_bam = {}
+
         ### *************************************
         ### Start reading BAMs to get read counts
         ### *************************************
@@ -405,90 +406,11 @@ class SNVdata:
             samfile = pysam.AlignmentFile(bam)
             sample = bam.split("/")[-1].split(".bam")[0]
 
-            print("READING BAM: " + bam.split("/")[-1])
-
-            print("Using reads with >" + str(filter_cutoff) + "% PID to consensus reference.")
-
-
             ### *****************************************************
             ### STEP 1: GET READ INFORMATION AND FILTER READS
             ### *****************************************************
 
-            #Get mapping quality for paired reads
-            #assumes that paired reads have the same "query name"
-            pair_mapqs = defaultdict(int)
-            insert_sizes = defaultdict(int)
-            insert_sizes_r1 = defaultdict(lambda: -1)
-            found_pairs = set()
-            observed_read1s = set()
-            observed_read2s = set()
-
-            # mismatches per read / read pair work
-            subset_reads = set()
-            read_pair_mismatches = {} 
-            read_pair_pid = {}
-
-            total_read_count = 0
-            for gene in tqdm(self.positions, desc='Getting read pairs: '):
-                
-                for read in samfile.fetch(gene[0], gene[1], gene[2]):
-                    total_read_count += 1
-
-                    #second read in pair
-                    if (read.is_read2 and read.query_name in observed_read1s) or (read.is_read1 and read.query_name in observed_read2s):
-                        if read.query_name not in found_pairs:
-                            if read.get_reference_positions() != [] and insert_sizes_r1[read.query_name] != -1:
-                                found_pairs.add(read.query_name)
-                                read_pair_pid[read.query_name] = 1-(float(read_pair_mismatches[read.query_name][0]) + float(read.get_tag('NM'))) / ( float(read_pair_mismatches[read.query_name][1]) + read.infer_query_length())
-                                insert_sizes[read.query_name] = read.get_reference_positions()[-1] - insert_sizes_r1[read.query_name]
-                    
-                    #this is the first read in a pair
-                    else:
-
-
-                        if read.get_reference_positions() != []:
-                                insert_sizes_r1[read.query_name] = read.get_reference_positions()[0]
-                                if read.is_read1:
-                                    observed_read1s.add(read.query_name)
-                                else:
-                                    observed_read2s.add(read.query_name)
-
-                                read_pair_mismatches[read.query_name] = [read.get_tag('NM'), read.infer_query_length()]
-
-                                if pair_mapqs[read.query_name] < read.mapping_quality:
-                                    pair_mapqs[read.query_name] = read.mapping_quality
-
-
-            min_insert = 50 # paired reads must be 50 bp apart
-            max_insert = np.median(list(insert_sizes.values())) * 2 # they can't be more than 2 * apart as the average
-
-
-            too_short = 0
-            too_long = 0
-            good_length = 0
-            for read_pair in found_pairs:
-                if insert_sizes[read_pair] > min_insert:
-                    if insert_sizes[read_pair] < max_insert:
-                        if pair_mapqs[read_pair] > minimum_mapq:
-                            good_length += 1
-
-                            # Which set does this read go into?
-                            if read_pair_pid[read_pair] > filter_cutoff:
-                                subset_reads.add(read_pair)
-                    else:
-                        too_long += 2
-                else:
-                    too_short += 2
-
-            print("median insert size: " + str(max_insert / 2))
-            print("total reads found: " + str(total_read_count))
-            print("reads with pair found: " + str(len(found_pairs) * 2))
-            print("paired reads < 50 bp apart: " + str(too_short))
-            print("paired reads > " + str(max_insert) + " apart: " + str(too_long))
-            print("reads which pass pair insert size filter: " + str(good_length*2))
-            print("reads which pass read pair PID >" + str(filter_cutoff) + "%: " + str(len(subset_reads)*2))
-
-            filtered_reads_by_bam[sample] = subset_reads
+            subset_reads = filter_reads(bam, self.positions, filter_cutoff, 3, 50, 2)
 
             ### ***********************************
             ### STEP 2: SCAN BAMs for counts columns
