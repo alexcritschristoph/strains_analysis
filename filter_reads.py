@@ -197,4 +197,4 @@ samtools index sample.sorted.bam\n in that order!""", formatter_class=argparse.R
     # Parse
     args = parser.parse_args()
     positions = get_fasta(args.fasta)
-    filter_reads(args.bam, positions, args.mismatch_threshold, args.max_insert_length, args.min_insert_length, args.min_mapq, write_data = args.write, write_bam=args.generate_sam)
+    filter_reads(args.bam, positions, float(args.mismatch_threshold), int(args.max_insert_length), int(args.min_insert_length), int(args.min_mapq), write_data = args.write, write_bam=args.generate_sam)
