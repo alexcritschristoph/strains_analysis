@@ -1,10 +1,11 @@
+import os
 import sys
 import pysam
 import argparse
 import numpy as np
 from tqdm import tqdm
 from Bio import SeqIO
-
+from collections import defaultdict
 
 def get_fasta(fasta_file = None):
     positions = []
@@ -36,16 +37,28 @@ def filter_reads(bam, positions, filter_cutoff = 0.97, max_insert_relative = 3, 
     pair_lengths = {}
 
 
-    samfile = pysam.AlignmentFile(bam)
-    print("READING BAM: " + bam.split("/")[-1])
 
+    samfile = pysam.AlignmentFile(bam)
+
+    #for printing out a new bam file
+    if write_bam:
+    	print("Copying header for new bam...")
+    	samfile_out = pysam.AlignmentFile(bam.split("/")[-1].split(".")[0] + "_filtered.bam", "wb", template=samfile)
+    	reads_all = defaultdict(list)
+
+    print("READING BAM: " + bam.split("/")[-1])
     print("Using reads with >" + str(filter_cutoff) + "% PID to consensus reference.")
+
 
     ## STEP 1: collect paired reads and their information
     for gene in tqdm(positions, desc='Getting read pairs: '):
         for read in samfile.fetch(gene[0], gene[1], gene[2]):
             total_read_count += 1
-
+ 
+            #store all reads if we're going to write them back to a new bam file
+            if write_bam:
+	            reads_all[read.query_name].append(read)
+   
             ## If we've seen this read's pair before
             if (read.is_read2 and read.query_name in observed_read1s) or (read.is_read1 and read.query_name in observed_read2s):
 
@@ -89,6 +102,7 @@ def filter_reads(bam, positions, filter_cutoff = 0.97, max_insert_relative = 3, 
     mapq_good = 0.0
     filter_cutoff_good = 0.0
     
+    print("Filtering reads...")
 
     for read_pair in mapped_pairs:
         if pair_inserts[read_pair] > min_insert:
@@ -101,6 +115,11 @@ def filter_reads(bam, positions, filter_cutoff = 0.97, max_insert_relative = 3, 
                     if pair_mismatch[read_pair] > filter_cutoff:
                         filter_cutoff_good += 2
                         final_reads.add(read_pair)
+
+                        #write out to new bam file if option selected
+                        if write_bam:
+                        	for read in reads_all[read_pair]:
+	                        	samfile_out.write(read)
             else:
                 too_long += 2
         else:
@@ -115,6 +134,7 @@ def filter_reads(bam, positions, filter_cutoff = 0.97, max_insert_relative = 3, 
     print("paired reads < 50 bp apart: " + str(too_short))
     print("paired reads > " + str(max_insert) + " apart: " + str(too_long))
     print("reads which also pass both pair insert size filters: " + str(good_length) + " (" + str(int(100*float(good_length) / total_read_count)) + "%)")
+    print("reads which pass minimum mapq threshold of " + str(min_mapq) + ": " + str(mapq_good) + " (" + str(int(100*float(mapq_good) / total_read_count)) +  "%)")
     print("(final) reads which also pass read pair PID >" + str(filter_cutoff) + "%: " + str(filter_cutoff_good) + " (" + str(int(100*float(filter_cutoff_good) / total_read_count)) + "%)")
 
     ## STEP 3: WRITE DATA IF NEEDED
@@ -125,6 +145,12 @@ def filter_reads(bam, positions, filter_cutoff = 0.97, max_insert_relative = 3, 
         f.close()
     ## STEP 4: WRITE NEW BAM IF NEEDED (TODO)
 
+    samfile.close()
+    samfile_out.close()
+    if write_bam:
+    	print("sorting new bam")
+    	pysam.sort("-o", bam.split("/")[-1].split(".")[0] + "_filtered_sort.bam", bam.split("/")[-1].split(".")[0] + "_filtered.bam")
+    	os.system('rm ' + bam.split("/")[-1].split(".")[0] + "_filtered.bam")
     return final_reads
 
         
@@ -162,9 +188,13 @@ samtools index sample.sorted.bam\n in that order!""", formatter_class=argparse.R
     parser.add_argument("-w", "--write", action="store", default=None, \
         help='File name to write read statistics to.')
 
+    parser.add_argument("-g", "--generate_sam", action="store_true", default=True, \
+        help='Include to create a new filtered SAM to write to.')
+
+
 
 
     # Parse
     args = parser.parse_args()
     positions = get_fasta(args.fasta)
-    filter_reads(args.bam, positions, args.mismatch_threshold, args.max_insert_length, args.min_insert_length, args.min_mapq, write_data = args.write)
+    filter_reads(args.bam, positions, args.mismatch_threshold, args.max_insert_length, args.min_insert_length, args.min_mapq, write_data = args.write, write_bam=args.generate_sam)
