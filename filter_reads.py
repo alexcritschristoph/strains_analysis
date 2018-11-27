@@ -146,8 +146,8 @@ def filter_reads(bam, positions, filter_cutoff = 0.97, max_insert_relative = 3, 
     ## STEP 4: WRITE NEW BAM IF NEEDED (TODO)
 
     samfile.close()
-    samfile_out.close()
     if write_bam:
+    	samfile_out.close()
     	print("sorting new bam")
     	pysam.sort("-o", bam.split("/")[-1].split(".")[0] + "_filtered_sort.bam", bam.split("/")[-1].split(".")[0] + "_filtered.bam")
     	os.system('rm ' + bam.split("/")[-1].split(".")[0] + "_filtered.bam")
