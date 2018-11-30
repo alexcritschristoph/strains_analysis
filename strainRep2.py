@@ -166,6 +166,7 @@ class SNVdata:
             print(genome)
             self.snv_table.to_csv(genome + ".freq",sep='\t', quoting=csv.QUOTE_NONE)
             self.clonality_table.to_csv(genome + ".clonal",sep='\t', quoting=csv.QUOTE_NONE)
+            self.r2linkage_table.to_csv(genome + ".linkage",sep='\t', quoting=csv.QUOTE_NONE)
 
             f = open(genome + ".data", 'wb')
             pickle.dump(self.__dict__, f, 2)
