@@ -16,7 +16,7 @@ def get_fasta(fasta_file = None):
 
     return positions
 
-def filter_reads(bam, positions, filter_cutoff = 0.97, max_insert_relative = 3, min_insert = 50, min_mapq = 2, write_data = None, write_bam = False):
+def filter_reads(bam, positions, filter_cutoff = 0.97, max_insert_relative = 3, min_insert = 50, min_mapq = 2, write_data = None, write_bam = False, log=None):
 
     # read sets
     observed_read1s = set()
@@ -37,17 +37,20 @@ def filter_reads(bam, positions, filter_cutoff = 0.97, max_insert_relative = 3, 
     pair_lengths = {}
 
 
-
     samfile = pysam.AlignmentFile(bam)
 
     #for printing out a new bam file
     if write_bam:
-    	print("Copying header for new bam...")
-    	samfile_out = pysam.AlignmentFile(bam.split("/")[-1].split(".")[0] + "_filtered.bam", "wb", template=samfile)
-    	reads_all = defaultdict(list)
+        print("Copying header for new bam...")
+        samfile_out = pysam.AlignmentFile(bam.split("/")[-1].split(".")[0] + "_filtered.bam", "wb", template=samfile)
+        reads_all = defaultdict(list)
 
     print("READING BAM: " + bam.split("/")[-1])
     print("Using reads with >" + str(filter_cutoff) + "% PID to consensus reference.")
+    if log:
+        log_file = open(log, 'a+')
+        log_file.write("READING BAM: " + bam.split("/")[-1] + "\n")
+        log_file.write("Using reads with >" + str(filter_cutoff) + "% PID to consensus reference." + "\n")
 
 
     ## STEP 1: collect paired reads and their information
@@ -57,7 +60,7 @@ def filter_reads(bam, positions, filter_cutoff = 0.97, max_insert_relative = 3, 
  
             #store all reads if we're going to write them back to a new bam file
             if write_bam:
-	            reads_all[read.query_name].append(read)
+                reads_all[read.query_name].append(read)
    
             ## If we've seen this read's pair before
             if (read.is_read2 and read.query_name in observed_read1s) or (read.is_read1 and read.query_name in observed_read2s):
@@ -118,8 +121,8 @@ def filter_reads(bam, positions, filter_cutoff = 0.97, max_insert_relative = 3, 
 
                         #write out to new bam file if option selected
                         if write_bam:
-                        	for read in reads_all[read_pair]:
-	                        	samfile_out.write(read)
+                            for read in reads_all[read_pair]:
+                                samfile_out.write(read)
             else:
                 too_long += 2
         else:
@@ -137,20 +140,36 @@ def filter_reads(bam, positions, filter_cutoff = 0.97, max_insert_relative = 3, 
     print("reads which pass minimum mapq threshold of " + str(min_mapq) + ": " + str(mapq_good) + " (" + str(int(100*float(mapq_good) / total_read_count)) +  "%)")
     print("(final) reads which also pass read pair PID >" + str(filter_cutoff) + "%: " + str(filter_cutoff_good) + " (" + str(int(100*float(filter_cutoff_good) / total_read_count)) + "%)")
 
+    if log:
+        log_file.write("\n**READ STATSTICS**")
+        log_file.write("\ntotal reads found: " + str(total_read_count))
+        log_file.write("\ntotal paired reads: " + str(total_read_pairs*2) + " (" + str(int(100*total_read_pairs*2.0 / total_read_count)) + "%)")
+        log_file.write("\ntotal same scaffold mapped paired reads: " + str(total_mapped_pairs*2) + " (" + str(int(100*total_mapped_pairs*2.0 / total_read_count)) + "%)")
+        log_file.write("\n")
+        log_file.write("\nmedian insert size: " + str(max_insert / max_insert_relative))
+        log_file.write("\npaired reads < 50 bp apart: " + str(too_short))
+        log_file.write("\npaired reads > " + str(max_insert) + " apart: " + str(too_long))
+        log_file.write("\nreads which also pass both pair insert size filters: " + str(good_length) + " (" + str(int(100*float(good_length) / total_read_count)) + "%)")
+        log_file.write("\nreads which pass minimum mapq threshold of " + str(min_mapq) + ": " + str(mapq_good) + " (" + str(int(100*float(mapq_good) / total_read_count)) +  "%)")
+        log_file.write("\n(final) reads which also pass read pair PID >" + str(filter_cutoff) + "%: " + str(filter_cutoff_good) + " (" + str(int(100*float(filter_cutoff_good) / total_read_count)) + "%)")
+
     ## STEP 3: WRITE DATA IF NEEDED
     if write_data:
         f = open(write_data, 'w+')
         for read_pair in mapped_pairs:
-            f.write(read_pair + "\t" + scafs[read_pair] + "\t" + str(pair_inserts[read_pair]) + "\t" + str(pair_mapqs[read_pair]) + "\t" + str(pair_mismatch[read_pair]) + "\n")
+            f.write(read_pair + "\t" + "\t" + str(pair_inserts[read_pair]) + "\t" + str(pair_mapqs[read_pair]) + "\t" + str(pair_mismatch[read_pair]) + "\n")
         f.close()
     ## STEP 4: WRITE NEW BAM IF NEEDED (TODO)
 
     samfile.close()
     if write_bam:
-    	samfile_out.close()
-    	print("sorting new bam")
-    	pysam.sort("-o", bam.split("/")[-1].split(".")[0] + "_filtered_sort.bam", bam.split("/")[-1].split(".")[0] + "_filtered.bam")
-    	os.system('rm ' + bam.split("/")[-1].split(".")[0] + "_filtered.bam")
+        samfile_out.close()
+        print("sorting new bam")
+        pysam.sort("-o", bam.split("/")[-1].split(".")[0] + "_filtered_sort.bam", bam.split("/")[-1].split(".")[0] + "_filtered.bam")
+        os.system('rm ' + bam.split("/")[-1].split(".")[0] + "_filtered.bam")
+
+    if log:
+        log_file.close()
     return final_reads
 
         

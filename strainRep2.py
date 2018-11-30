@@ -102,9 +102,12 @@ def _get_base_counts(pileupcolumn, filtered_reads):
 
     for pileupread in pileupcolumn.pileups:
         # print(pileupread.)
+
         if not pileupread.is_del and not pileupread.is_refskip:
             read_name = pileupread.alignment.query_name
             if read_name in filtered_reads:
+                # if pileupread.indel != 0:
+                #     print(pileupread.alignment.get_aligned_pairs())
                 try:
                     counts[P2C[pileupread.alignment.query_sequence[pileupread.query_position]]] += 1
                 except KeyError: # This would be like an N or something not A/C/T/G
@@ -365,7 +368,7 @@ class SNVdata:
         self.r2linkage_table = pd.DataFrame(r2linkage_table)
 
 
-    def run_strain_profiler(self, bam, min_coverage = 5, min_snp = 3, filter_cutoff = 0):
+    def run_strain_profiler(self, bam, min_coverage = 5, min_snp = 3, filter_cutoff = 0, log= None):
         ''' 
         Main class for finding SNVs and generating data profile for a genome.
         '''
@@ -395,7 +398,7 @@ class SNVdata:
             self.positions = self.positions[0:10]
 
         # Call read filtering function
-        subset_reads = filter_reads(bam, self.positions, filter_cutoff, 3, 50, 2)
+        subset_reads = filter_reads(bam, self.positions, filter_cutoff, 3, 50, 2, log=log)
 
         ### START SNP FINDING
 
@@ -482,6 +485,15 @@ class SNVdata:
         print("Mean coverage: " + str(float(sum(coverages.values())) / len(coverages)))
         print("Total number of bases: " + str(sum(coverages.values())))
 
+        if log:
+            log_file = open(log, 'a+')
+            log_file.write("\nTotal SNVs-sites: " + str(total_snv_sites))
+            log_file.write("\nTotal SNV-bases: " + str(alpha_snvs))
+            log_file.write("\nMean clonality: " + str(float(sum(clonality_table['clonality'])) / float(len(clonality_table['clonality'])) ))
+            log_file.write("\nTotal sites: " + str(total_positions))
+            log_file.write("\nMean coverage: " + str(float(sum(coverages.values())) / len(coverages)))
+            log_file.write("\nTotal number of bases: " + str(sum(coverages.values())))
+            log_file.close()
         self.coverages = coverages
         self.alpha_snvs = alpha_snvs
         self.total_snv_sites = total_snv_sites
@@ -510,12 +522,25 @@ def strain_pipeline(args, filter_cutoff):
 
 
     print("Running at resolution: (>" + str(filter_cutoff) + "%)")
+    if args.log:
+        log_file = open(args.log, 'a+')
+        log_file.write("Running at resolution: (>" + str(filter_cutoff) + "%)\n")
+        log_file.close()
+
     strains.get_scaffold_positions(args.genes, args.fasta)
-    strains.run_strain_profiler(args.bam, min_coverage = int(args.min_coverage), min_snp = int(args.min_snp), filter_cutoff = filter_cutoff)
+    strains.run_strain_profiler(args.bam, min_coverage = int(args.min_coverage), min_snp = int(args.min_snp), filter_cutoff = filter_cutoff, log=args.log)
+
+    if args.log:
+        log_file = open(args.log, 'a+')
+        log_file.write("\nCalculating linkage network...\n")
     strains.calc_linkage_network()
+
+    if args.log:
+        log_file.write("Calculating LD...\n")
     strains.calc_ld_all_sites(int(args.min_snp))
     strains.save()
-
+    if args.log:
+        log_file.close()
 def main(args):
     '''
     Main entry point
@@ -559,6 +584,9 @@ if __name__ == '__main__':
 
     parser.add_argument('--testing', action='store_true', default=False, \
         help ="Testing command runs only on first 10 contigs to run faster.")
+
+    parser.add_argument('--log', action='store', default=None, \
+        help ="File to log results to.")
 
     # Specify output of "--version"
     parser.add_argument(
