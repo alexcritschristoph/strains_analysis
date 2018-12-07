@@ -210,10 +210,13 @@ samtools index sample.sorted.bam\n in that order!""", formatter_class=argparse.R
     parser.add_argument("-g", "--generate_sam", action="store_true", default=True, \
         help='Include to create a new filtered SAM to write to.')
 
+    parser.add_argument('--log', action='store', default=None, \
+        help ="File to log results to.")
+
 
 
 
     # Parse
     args = parser.parse_args()
     positions = get_fasta(args.fasta)
-    filter_reads(args.bam, positions, float(args.mismatch_threshold), int(args.max_insert_length), int(args.min_insert_length), int(args.min_mapq), write_data = args.write, write_bam=args.generate_sam)
+    filter_reads(args.bam, positions, float(args.mismatch_threshold), int(args.max_insert_length), int(args.min_insert_length), int(args.min_mapq), write_data = args.write, write_bam=args.generate_sam, log=args.log)
