@@ -154,7 +154,7 @@ def filter_reads(bam, positions, fasta_length, filter_cutoff = 0.97, max_insert_
         log_file.write("\ntotal reads found: " + str(total_read_count))
         log_file.write("\naverage mapped read length: " + str(mapped_read_lengths))
         log_file.write("\ntotal fasta length: " + str(fasta_length))
-    	log_file.write("\nexpected possible coverage: " + str(float(total_read_count)*mapped_read_lengths / fasta_length))
+        log_file.write("\nexpected possible coverage: " + str(float(total_read_count)*mapped_read_lengths / fasta_length))
         log_file.write("\ntotal paired reads: " + str(total_read_pairs*2) + " (" + str(int(100*total_read_pairs*2.0 / total_read_count)) + "%)")
         log_file.write("\ntotal same scaffold mapped paired reads: " + str(total_mapped_pairs*2) + " (" + str(int(100*total_mapped_pairs*2.0 / total_read_count)) + "%)")
         log_file.write("\n")
