@@ -132,6 +132,7 @@ class SNVdata:
         self.output = None
         self.testing = False        
         self.positions = []
+        self.fasta_length = 0
 
 
         # Data structures
@@ -196,6 +197,7 @@ class SNVdata:
             f.close()
         else:
             for rec in SeqIO.parse(fasta_file, "fasta"):
+                self.fasta_length += len(rec.seq)
                 start = 0
                 while True:
                     chunk = start + 15000
@@ -399,7 +401,7 @@ class SNVdata:
             self.positions = self.positions[0:10]
 
         # Call read filtering function
-        subset_reads = filter_reads(bam, self.positions, filter_cutoff, 3, 50, 2, log=log)
+        subset_reads = filter_reads(bam, self.positions, self.fasta_length, filter_cutoff, 3, 50, 2, log=log)
 
         ### START SNP FINDING
 

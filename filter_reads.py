@@ -9,32 +9,33 @@ from collections import defaultdict
 
 def get_fasta(fasta_file = None):
     positions = []
+    total_length = 0
     for rec in SeqIO.parse(fasta_file, "fasta"):
         start = 0
-        
+        total_length += len(rec.seq)
         positions.append([str(rec.id),start, len(rec.seq)])
 
-    return positions
+    return [positions, total_length]
 
-def filter_reads(bam, positions, filter_cutoff = 0.97, max_insert_relative = 3, min_insert = 50, min_mapq = 2, write_data = None, write_bam = False, log=None):
+def filter_reads(bam, positions, fasta_length, filter_cutoff = 0.97, max_insert_relative = 3, min_insert = 50, min_mapq = 2, write_data = None, write_bam = False, log=None):
 
     # read sets
     observed_read1s = set()
     observed_read2s = set()
     mapped_pairs = set()
     final_reads = set()
+
     # counters
     total_read_count = 0
     total_read_pairs = 0
     total_mapped_pairs = 0
+    mapped_read_lengths = 0
 
     # storing data
     read_data = {}
     pair_mapqs = {}
-    pair_lengths = {}
     pair_mismatch = {}
     pair_inserts = {}
-    pair_lengths = {}
 
 
     samfile = pysam.AlignmentFile(bam)
@@ -74,6 +75,9 @@ def filter_reads(bam, positions, filter_cutoff = 0.97, max_insert_relative = 3, 
                         total_mapped_pairs += 1
                         mapped_pairs.add(read.query_name) #add to found 
 
+                        #for calculating mean read length
+                        mapped_read_lengths += float(read_data[read.query_name]['len'])
+
                         #set mismatch percentage
                         pair_mismatch[read.query_name] = 1- ( ( float(read_data[read.query_name]['nm']) + float(read.get_tag('NM')) ) / ( float(read_data[read.query_name]['len']) + read.infer_query_length()) )
                         #set insert size
@@ -98,6 +102,8 @@ def filter_reads(bam, positions, filter_cutoff = 0.97, max_insert_relative = 3, 
 
 
     ## STEP 2: INSERT SIZE CUTOFF, MAPQ CUTOFF, AND MISMATCH CUTOFF
+    mapped_read_lengths = mapped_read_lengths / total_mapped_pairs
+
     max_insert = np.median(list(pair_inserts.values())) * max_insert_relative #insert size should be less than max_insert_relative * median value
     too_short = 0.0
     too_long = 0.0
@@ -130,6 +136,8 @@ def filter_reads(bam, positions, filter_cutoff = 0.97, max_insert_relative = 3, 
     
     print("**READ STATSTICS**")
     print("total reads found: " + str(total_read_count))
+    print("average mapped read length: " + str(mapped_read_lengths))
+    print("expected possible coverage: " + str(float(total_read_count)*mapped_read_lengths / fasta_length))
     print("total paired reads: " + str(total_read_pairs*2) + " (" + str(int(100*total_read_pairs*2.0 / total_read_count)) + "%)")
     print("total same scaffold mapped paired reads: " + str(total_mapped_pairs*2) + " (" + str(int(100*total_mapped_pairs*2.0 / total_read_count)) + "%)")
     print("")
@@ -139,10 +147,12 @@ def filter_reads(bam, positions, filter_cutoff = 0.97, max_insert_relative = 3, 
     print("reads which also pass both pair insert size filters: " + str(good_length) + " (" + str(int(100*float(good_length) / total_read_count)) + "%)")
     print("reads which pass minimum mapq threshold of " + str(min_mapq) + ": " + str(mapq_good) + " (" + str(int(100*float(mapq_good) / total_read_count)) +  "%)")
     print("(final) reads which also pass read pair PID >" + str(filter_cutoff) + "%: " + str(filter_cutoff_good) + " (" + str(int(100*float(filter_cutoff_good) / total_read_count)) + "%)")
-
+    print("(final) expected coverage: " + str(float(filter_cutoff_good) * mapped_read_lengths / fasta_length))
     if log:
         log_file.write("\n**READ STATSTICS**")
         log_file.write("\ntotal reads found: " + str(total_read_count))
+        log_file.write("\naverage mapped read length: " + str(mapped_read_lengths))
+    	log_file.write("\nexpected possible coverage: " + str(float(total_read_count)*mapped_read_lengths / fasta_length))
         log_file.write("\ntotal paired reads: " + str(total_read_pairs*2) + " (" + str(int(100*total_read_pairs*2.0 / total_read_count)) + "%)")
         log_file.write("\ntotal same scaffold mapped paired reads: " + str(total_mapped_pairs*2) + " (" + str(int(100*total_mapped_pairs*2.0 / total_read_count)) + "%)")
         log_file.write("\n")
@@ -152,6 +162,7 @@ def filter_reads(bam, positions, filter_cutoff = 0.97, max_insert_relative = 3, 
         log_file.write("\nreads which also pass both pair insert size filters: " + str(good_length) + " (" + str(int(100*float(good_length) / total_read_count)) + "%)")
         log_file.write("\nreads which pass minimum mapq threshold of " + str(min_mapq) + ": " + str(mapq_good) + " (" + str(int(100*float(mapq_good) / total_read_count)) +  "%)")
         log_file.write("\n(final) reads which also pass read pair PID >" + str(filter_cutoff) + "%: " + str(filter_cutoff_good) + " (" + str(int(100*float(filter_cutoff_good) / total_read_count)) + "%)")
+        log_file.write("\n(final) expected coverage: " + str(float(filter_cutoff_good) * mapped_read_lengths / fasta_length))
 
     ## STEP 3: WRITE DATA IF NEEDED
     if write_data:
@@ -219,4 +230,4 @@ samtools index sample.sorted.bam\n in that order!""", formatter_class=argparse.R
     # Parse
     args = parser.parse_args()
     positions = get_fasta(args.fasta)
-    filter_reads(args.bam, positions, float(args.mismatch_threshold), int(args.max_insert_length), int(args.min_insert_length), int(args.min_mapq), write_data = args.write, write_bam=args.generate_sam, log=args.log)
+    filter_reads(args.bam, positions[0], positions[1], float(args.mismatch_threshold), int(args.max_insert_length), int(args.min_insert_length), int(args.min_mapq), write_data = args.write, write_bam=args.generate_sam, log=args.log)
