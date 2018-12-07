@@ -72,7 +72,7 @@ def calculate_clonality(counts, min_cov = 5):
     return prob
 
 
-def call_snv_site(counts, min_cov = 5, min_snp = 3):
+def call_snv_site(counts, min_cov = 5, min_snp = 3, min_freq=0.05):
     '''
     Determines whether a site has a variant based on its nucleotide count frequencies.
     '''
@@ -82,7 +82,7 @@ def call_snv_site(counts, min_cov = 5, min_snp = 3):
     if total >= min_cov:
         i = 0
         for c in counts:
-            if c >= min_snp:
+            if c >= min_snp and float(c) / total > min_freq:
                 i += 1
         if i > 1:
             return C2P[counts.index(max(counts))]
@@ -369,7 +369,7 @@ class SNVdata:
         self.r2linkage_table = pd.DataFrame(r2linkage_table)
 
 
-    def run_strain_profiler(self, bam, min_coverage = 5, min_snp = 3, filter_cutoff = 0, log= None):
+    def run_strain_profiler(self, bam, min_coverage = 5, min_snp = 3, min_freq = 0.05, filter_cutoff = 0, log= None):
         ''' 
         Main class for finding SNVs and generating data profile for a genome.
         '''
@@ -420,7 +420,7 @@ class SNVdata:
                     if sum(counts) > min_coverage:
                         pos_clonality = calculate_clonality(counts)
                         clonality_by_window[window].append([position, pos_clonality])
-                        consensus = call_snv_site(counts, min_cov = min_coverage, min_snp = min_snp)
+                        consensus = call_snv_site(counts, min_cov = min_coverage, min_snp = min_snp, min_freq = min_freq)
                         coverages[position] = sum(counts)
 
                 ## Strep 2: Is there an SNV at this position?
@@ -438,7 +438,7 @@ class SNVdata:
                                 try:
                                     val = pileupread.alignment.query_sequence[pileupread.query_position]
                                     #if value is not the consensus value
-                                    if counts[P2C[val]] >= min_snp:
+                                    if counts[P2C[val]] >= min_snp and float(counts[P2C[val]]) / sum(counts) >= min_freq:
                                         #this is a variant read!
                                         read_to_snvs[read_name].append(position + ":" + val)
                                         if val != consensus:
@@ -451,8 +451,9 @@ class SNVdata:
                     for nucl in counts:
                         if nucl >= min_snp:
                             freq = float(nucl) / float(sum(counts))
-                            snp = position + ":" + C2P[nucl_count]
-                            snvs_frequencies[snp] = [freq, window]
+                            if freq >= min_freq:
+                                snp = position + ":" + C2P[nucl_count]
+                                snvs_frequencies[snp] = [freq, window]
 
                         nucl_count += 1 
 
@@ -529,7 +530,7 @@ def strain_pipeline(args, filter_cutoff):
         log_file.close()
 
     strains.get_scaffold_positions(args.genes, args.fasta)
-    strains.run_strain_profiler(args.bam, min_coverage = int(args.min_coverage), min_snp = int(args.min_snp), filter_cutoff = filter_cutoff, log=args.log)
+    strains.run_strain_profiler(args.bam, min_coverage = int(args.min_coverage), min_snp = int(args.min_snp), min_freq=float(args.min_freq), filter_cutoff = filter_cutoff, log=args.log)
 
     if args.log:
         log_file = open(args.log, 'a+')
@@ -579,7 +580,11 @@ if __name__ == '__main__':
     parser.add_argument("-c", "--min_coverage", action="store", default=5, \
         help='Minimum SNV coverage')
     parser.add_argument("-s", "--min_snp", action="store", default=3, \
-        help='Minimum number of reads to confirm a SNV')
+        help='Absolute minimum number of reads to confirm a SNV (both this AND -f must be true)')
+
+    parser.add_argument("-f", "--min_freq", action="store", default=0.05, \
+        help='Minimum SNP frequency to confirm a SNV (both this AND -s must be true)')
+
     parser.add_argument("-l", "--level", action="store", default=None, \
         help='Minimum percent identity of read pairs to consensus to use the reads - default is to run at 90, 92, 94, 96, 98, and 100')
 
