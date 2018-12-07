@@ -418,8 +418,8 @@ class SNVdata:
                 consensus = False
                 # Yes there were reads at this position
                 if counts:
-                    total_positions += 1
                     if sum(counts) > min_coverage:
+                        total_positions += 1
                         pos_clonality = calculate_clonality(counts)
                         clonality_by_window[window].append([position, pos_clonality])
                         consensus = call_snv_site(counts, min_cov = min_coverage, min_snp = min_snp, min_freq = min_freq)
@@ -485,7 +485,7 @@ class SNVdata:
         print("Total SNVs-sites: " + str(total_snv_sites))
         print("Total SNV-bases: " + str(alpha_snvs))
         print("Mean clonality: " + str(float(sum(clonality_table['clonality'])) / float(len(clonality_table['clonality'])) ))
-        print("Total sites: " + str(total_positions))
+        print("Total sites above min-coverage: " + str(total_positions))
         print("Mean coverage: " + str(float(sum(coverages.values())) / len(coverages)))
         print("Total number of bases: " + str(sum(coverages.values())))
 
