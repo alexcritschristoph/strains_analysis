@@ -82,7 +82,7 @@ def call_snv_site(counts, min_cov = 5, min_snp = 3, min_freq=0.05):
     if total >= min_cov:
         i = 0
         for c in counts:
-            if c >= min_snp and float(c) / total > min_freq:
+            if c >= min_snp and float(c) / total >= min_freq:
                 i += 1
         if i > 1:
             return C2P[counts.index(max(counts))]
@@ -139,6 +139,7 @@ class SNVdata:
         self.snv_table = None         #
         self.read_to_snvs = None      #
         self.windows_to_snvs = None   # 
+        self.all_counts = None        # All counts of AGCT for each position
         self.snv_counts = None        # Counts of AGCT for each SNV position
         self.clonality_table = None         # Dict of clonality histograms (lists) by window
         self.snv_graph = None         # Weighted networkx graph that tracks SNVs( 100:A, 100:T are diff nodes) that are linked
@@ -390,6 +391,8 @@ class SNVdata:
         snvs_frequencies = defaultdict(int)
         clonality_by_window = defaultdict(list)
         windows_to_snvs = defaultdict(list)
+        
+        all_counts = {}
         snv_counts = {}
         coverages = {}
 
@@ -431,6 +434,7 @@ class SNVdata:
                     total_snv_sites += 1
                     windows_to_snvs[window].append(position)
                     snv_counts[position] = counts
+                    all_counts[position] = counts
                     # Get reads to snvs
 
                     for pileupread in pileupcolumn.pileups:
@@ -506,6 +510,7 @@ class SNVdata:
         self.read_to_snvs = read_to_snvs
         self.total_positions = total_positions
         self.windows_to_snvs = windows_to_snvs
+        self.all_counts = all_counts
         self.snv_counts = snv_counts
 
         self.results = True
