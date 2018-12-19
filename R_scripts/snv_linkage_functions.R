@@ -1,15 +1,18 @@
 ## Plot and summarize output from strainRep2.py program
-
 ## strainRep2.py created by Alex Crits-Christoph: https://github.com/alexcritschristoph/strains_analysis
 
+## R_scripts created by Keith Bouma-Gregson
 
 #### LOG FILES #####
 summarize_log_files <- function(path, filename= FALSE){
   require(tidyverse)
 
-  #if(exists("path") | !file.exists(list.files(file.path(path), pattern= ".log")[1])){
-  #  stop("File path not found")
-  #}
+  message("Log filenames must have format SampleID.ref_id.pidvalue.log (e.g. Sample1.Genome1.pid98.log) \n
+          SampleID= sample reads used in mapping \n
+          ref_id= reference genome samples were mapped to \n
+          pid= percent identity filter of the mapped reads \n
+          Errors will be produced if the filename does not match this format")
+
 
   ## List files
   if(filename == FALSE){
@@ -22,7 +25,7 @@ summarize_log_files <- function(path, filename= FALSE){
   log_summary <- data.frame(matrix(rep(NA, length(log.files)*13), ncol= 13)) %>%
     as_tibble() %>%
     rename(sample= X1,
-           species= X2,
+           ref_id= X2,
            pid= X3,
            cov_expect_final= X4,
            cov_mean= X5,
@@ -35,9 +38,8 @@ summarize_log_files <- function(path, filename= FALSE){
            breadth= X12,
            clonality= X13)
 
+  ## Loop over log files
   counter <-  1
-  #file <- 1
-  #path <- dir_input_sp2
   for(file in 1:length(log.files)){
 
     ## Read log file
@@ -48,7 +50,7 @@ summarize_log_files <- function(path, filename= FALSE){
 
     ## Extract information from each row
     sample_name <- str_split(log.files[file], "\\.")[[1]][1]
-    species_ID <- str_split(log.files[file], "\\.")[[1]][2]
+    ref_ID <- str_split(log.files[file], "\\.")[[1]][2]
     PID <- str_split(log.files[file], "\\.")[[1]][3] %>%
       str_replace("pid", "")
 
@@ -98,7 +100,9 @@ summarize_log_files <- function(path, filename= FALSE){
       str_replace("^.*: ", "")
 
     ## Add information to data frame
-    log_summary[counter, ] <- c(sample_name, species_ID, PID, cov_expect_final, cov_mean, reads_count_initial, reads_count_final, reads_percent_final, total_sites, snv_sites, snv_bases, breadth, clonality)
+    log_summary[counter, ] <- c(sample_name, ref_ID, PID, cov_expect_final, cov_mean, reads_count_initial,
+                                reads_count_final, reads_percent_final, total_sites,
+                                snv_sites, snv_bases, breadth, clonality)
 
     counter <- counter + 1
   }
@@ -112,319 +116,6 @@ summarize_log_files <- function(path, filename= FALSE){
 
 
 #### LINKAGE AND FREQ FILES #####
-#analyse_linkage_dat_old <- function(freq_threshold= 0.05, species, pid, path, output, linkage_plot= TRUE, freq_plot= TRUE, min.breadth= 0.6){
-  ## LIBRARIES #################################################################
-  require(tidyverse)
-  require(progress)
-  require(ggplot2)
-  require(RColorBrewer)
-
-  ## CHECK FOR ERRORS ############################################################
-  if(str_detect(as.character(pid), "\\.")){
-    stop("pid must be an integer with no decimals (e.g. 0.99 = 99)")
-  }
-
-  ## DEFINE VARIABLES ############################################################
-  dir_input <- path
-  dir_output <- output
-  species.num <- paste0("species_", species)
-  pid_value <- as.character(pid)
-  linkage.files <- list.files(file.path(dir_input), pattern= str_c(pid_value, "linkage", sep= "."))
-  linkage.sample <- str_replace(linkage.files, "_0\\..*$", "")
-  freq.files <- list.files(file.path(dir_input), pattern= str_c(pid_value, "freq", sep= "."))
-  freq.sample <- str_replace(freq.files, "_0\\..*$", "")
-
-  ##### PLOTTING PARAMETERS ####################################################
-  x_axis_format_distance <- scale_x_continuous(expand= c(0, 5))
-  x_axis_format_window <- scale_x_discrete(labels= NULL, expand= c(0.02, 0))
-  y_axis_format <- scale_y_continuous(limits= c(0, 1),
-                                      breaks= seq(0, 1, by= 0.25),
-                                      expand= c(0.02, 0))
-
-
-
-  #pid.facet.labels <- as_labeller(c(`98` = "PID= 0.98", `96` = "PID= 0.96" ))
-  #facet.by.pid <- facet_grid(pid~., labeller= labeller(pid= pid.facet.labels, scales= "free_y"))
-
-
-  ## ggplot theme for snv linkage
-  theme_snv <- theme(panel.grid = element_blank(),
-                     plot.margin = unit(c(1, 1, 1, 1), "cm"),
-                     text = element_text(size= 14),
-                     plot.background = element_rect(fill = "transparent"), # bg of the plot
-                     panel.background = element_rect(fill= "transparent", color="black"),
-                     axis.text = element_text(colour="black"),
-                     axis.title.x = element_text(vjust = -0.75),
-                     axis.title.y = element_text(vjust = 1.5),
-                     legend.background = element_rect(size=0.25, color="black", fill= "transparent"),
-                     legend.key = element_blank(),
-                     strip.background=element_rect(fill="transparent", color="transparent"),
-                     legend.position = "top")
-  ################################################################################
-
-
-  ##### LOOP THROUGH .LINKAGE FILES AND MAKE PLOTS #########################################
-
-  if(linkage_plot == TRUE){
-
-    ## progress bar
-    pb.linkage <- progress_bar$new(format = "[:bar] :current/:total (:percent)", total = length(linkage.files))
-    pb.linkage$tick(0)
-
-    rm(counter)
-
-    ## Initialize data frame to store model coefficients
-    mod.coef <- data.frame(sample= as.character(NULL), species= as.character(NULL), pid= as.character(NULL), df= as.character(NULL), intercept= as.numeric(NULL), slope= as.numeric(NULL), r2_adj= as.numeric(NULL), p_value= as.numeric(NULL), stringsAsFactors= FALSE)
-
-    #### THE LOOP ####
-    message("Looping over .linkage files")
-
-    for(file in 1:length(linkage.files)){
-      pb.linkage$tick() ## Progress Bar
-
-      #### SAMPLE ID INFORMATION FOR OUTPUT FILES
-      sample.name <- str_replace(linkage.files[file], "_0\\..*$", "")
-      plot.name <- str_c(sample.name, species.num, str_c("PID=0.", pid_value), sep= "-")
-
-      ## CHECK TO MAKE SURE BREADTH > 0.6
-      ## if not, then skip this sample and move to the next iteration of the loop
-      log.file <- str_c(sample.name, ".", species.num, ".pid", pid_value, ".log")
-      samp.breadth <- summarize_log_files(path= file.path(path, "log_files"), filename= log.file) %>%
-        select(breadth)
-
-      if(samp.breadth < min.breadth){
-        message("Breadth <0.6, skipping sample: ", sample.name)
-        next()
-      }
-
-      #### READ IN THE DATA
-
-      ## Coverage data from log file
-      snvs.coverage <- try(suppressMessages(read_tsv(file.path(dir_input, "log_files", str_c(linkage.sample[file], ".", species.num, ".pid", pid_value, ".log")),
-                                                     col_names = FALSE,
-                                                     progress= FALSE)) %>%
-                             pull() %>%
-                             .[str_detect(., "Mean coverage")] %>%
-                             str_replace("Mean coverage: ", "") %>%
-                             as.numeric(.) %>%
-                             round(., 1))
-
-      if(class(snvs.coverage) != "try-error"){
-        ## Linkage data
-        snvs <- suppressMessages(read_tsv(file.path(dir_input, linkage.files[file]), progress= FALSE)) %>%
-          mutate(pid= pid_value) %>%
-          filter(total > snvs.coverage*freq_threshold, complete.cases(.)) %>%
-          rename(row_num= X1) %>%
-          mutate(r2= ifelse(r2 > 1, 1, r2), # some r2 values seem to be just above 1
-                 dist.bin= cut(Distance, breaks= 10),
-                 scaffold= str_replace(Window, ":.*$", ""))
-
-
-        #### SUMMARIZE BY DISTANCE BIN
-        # snvs.sum <- snvs %>%
-        #   group_by(pid, scaffold, dist.bin) %>%
-        #   summarize(
-        #     N= length(r2),
-        #     r2.mean= mean(r2, na.rm= TRUE),
-        #     r2.sd= sd(r2, na.rm= TRUE)) %>%
-        #   ungroup() %>%
-        #   filter(complete.cases(.))
-
-        #### MAKE WIDE FORMAT AND MATRIX FOR HEATMAP
-        ## Average r^2 value per scaffold
-        #snvs.sum.wide <- snvs.sum %>%
-        #                select(-N, -r2.sd) %>%
-        #                spread(dist.bin, value= r2.mean)
-        #snvs.sum.96.mat <- as.matrix(snvs.sum.wide[snvs.sum.wide$pid == "96", ncol(snvs.sum.wide):3])
-        #snvs.sum.98.mat <- as.matrix(snvs.sum.wide[snvs.sum.wide$pid == "98", ncol(snvs.sum.wide):3])
-
-
-        #### EXPONENTIAL DECAY MODEL
-        ## use try() to make sure lm function did not error, otherwise loop crashes
-        exp.model <- try(lm(log(r2) ~ Distance, data= subset(snvs, r2 > 0)))
-
-        ## Make dataframes of predicted data for ggplots below
-        if(class(exp.model) != "try-error"){
-          exp.model.df <- data.frame(pid= pid_value,
-                                     dist.values= snvs$Distance,
-                                     pred.values= exp(predict(exp.model, list(Distance= snvs$Distance))))
-        }
-
-
-        ## Export model coefficients to a table
-        if(exists("exp.model.df")){
-
-          if(exists("counter") == FALSE){
-            counter <- 1
-          }
-
-          mod.coef[counter, ] <- c(sample.name, species.num, pid_value, summary(exp.model)$df[2],
-                                   round(exp.model$coefficients[1], 5), round(exp.model$coefficients[2], 5), round(summary(exp.model)$adj.r.squared, 4), round(summary(exp.model)$coef["Distance", "Pr(>|t|)"], 4))
-          counter <- counter + 1
-        }
-
-        #### MAKE PLOTS ################################################################
-
-
-        ## DISTANCE x R^2
-        ## Only plot regression line if linear model did not error
-        if(exists("exp.model.df")){
-          ggplot(data= snvs, aes(x= Distance, y= r2)) +
-            geom_hline(yintercept = 0, size= 0.25) +
-            geom_point() +
-            geom_line(data = exp.model.df, aes(x= dist.values, y = pred.values), color= "tomato", size= 1) +
-            labs(x= "Pairwise distance (bp)", y= expression(r^2), title= plot.name) +
-            y_axis_format +
-            x_axis_format_distance +
-            theme_snv
-          #ggsave(last_plot(), filename= str_c(plot.name, "_dist", ".pdf"), width= 8, height= 6, units= "in", path= dir_output, device= cairo_pdf)
-          ggsave(last_plot(), filename= str_c(plot.name, "_dist", ".jpg"), width= 8, height= 6, units= "in", dpi= 320,  path= dir_output)
-
-        } else {
-
-          ggplot(data= snvs, aes(x= Distance, y= r2)) +
-            geom_hline(yintercept = 0, size= 0.25) +
-            geom_point() +
-            #geom_line(data = exp.model.df, aes(x= dist.values, y = pred.values), color= "tomato", size= 1) +
-            labs(x= "Pairwise distance (bp)", y= expression(r^2), title= plot.name) +
-            y_axis_format +
-            x_axis_format_distance +
-            theme_snv
-          #ggsave(last_plot(), filename= str_c(plot.name, "_dist", ".pdf"), width= 8, height= 6, units= "in", path= dir_output, device= cairo_pdf)
-          ggsave(last_plot(), filename= str_c(plot.name, "_dist", ".jpg"), width= 8, height= 6, units= "in", dpi= 320,  path= dir_output)
-        }
-
-        ## Remove model dataframes for next iteration of the loop
-        rm(exp.model.df)
-
-        # ## WINDOW x R^2
-        #   distance.color.ramp <- colorRampPalette(brewer.pal(9, "PuBu"))(length(levels(snvs$dist.bin)))
-        #
-        #   ggplot(data= snvs, aes(x= Window, y= r2)) +
-        #     geom_hline(yintercept = 0, size= 0.25) +
-        #     geom_point(aes(fill= dist.bin), color= "black", size= 2, pch= 21) +
-        #     #geom_errorbar() +
-        #     labs(x= "Window", y= expression(r^2), title= plot.name) +
-        #     scale_fill_manual(values= distance.color.ramp) +
-        #     y_axis_format +
-        #     x_axis_format_window +
-        #     facet.by.pid +
-        #     theme_snv
-        #   #ggsave(last_plot(), filename= str_c(plot.name, "_window", ".pdf"), width= 8, height= 6, units= "in", path= dir_output, device= cairo_pdf)
-        #   ggsave(last_plot(), filename= str_c(plot.name, "_window", ".jpg"), width= 8, height= 6, units= "in", dpi= 320,  path= dir_output)
-
-
-
-        ## R^2 HISTOGRAM WITH DIST.BIN
-        # ggplot(data= snvs, aes(x= r2)) +
-        #   geom_histogram(aes(fill= dist.bin), color= "black", binwidth= 0.01) +
-        #   #geom_errorbar() +
-        #   #labs(x= "Pairwise distance (bp)", y= expression(r^2), title= plot.name) +
-        #   scale_fill_manual(values= distance.color.ramp) +
-        #   scale_y_log10(expand= c(0.005, 0)) +
-        #   scale_x_continuous(expand= c(0.02, 0)) +
-        #   facet.by.pid +
-        #   theme_snv
-
-        ## MAKE HEATMAP, IF SPECIFIED IN FUNCTION
-        #if(heatmap == TRUE){
-        # pheatmap(t(snvs.sum.96.mat),
-        #          cluster_rows = FALSE,
-        #          cluster_cols = FALSE)
-        #         filename= file.path(dir_output, str_c(plot.name,"_heatmap.pdf")))
-        #}
-
-      }
-    }
-
-
-    ## Clean up mod.coef table
-    message("Writing model coefficients table")
-    mod.coef <- mod.coef %>%
-      mutate_at(vars(df:p_value), funs(as.numeric)) %>%
-      as_tibble()
-    write_tsv(mod.coef, path= file.path(dir_output_table, str_c("model_coef_", species.num, ".tsv")))
-
-
-    ## PLOT HISTOGRAM OF MODEL SLOPES
-    # ggplot(mod.coef, aes(x= slope)) +
-    #   geom_histogram(color= "black", fill= "snow3", binwidth= 0.001 ) +
-    #   labs(x= "Slope coefficient", y= "Count", title= str_c("Slopes-", species.num)) +
-    #   scale_x_continuous(expand= c(0.01, 0)) +
-    #   theme_snv
-    # ggsave(last_plot(), filename= str_c("mod_coef_slope-", species.num,".jpg"), width= 8, height= 6, units= "in", dpi= 320,  path= dir_output)
-
-    ## PLOT HISTOGRAM OF MODEL ADJUSTED R^2
-    # ggplot(mod.coef, aes(x= r2_adj)) +
-    #   geom_histogram(color= "black", fill= "snow3", binwidth= 0.01) +
-    #   labs(x= expression(Adjusted~r^2), y= "Count", title= str_c("r^2_adj-", species.num)) +
-    #   scale_x_continuous(expand= c(0.01, 0)) +
-    #   theme_snv
-    # ggsave(last_plot(), filename= str_c("mod_coef_r2adj-", species.num,".jpg"), width= 8, height= 6, units= "in", dpi= 320,  path= dir_output)
-
-  }
-
-  #### LOOP OVER .FREQ FILES ###################################################
-  if(freq_plot == TRUE){
-
-    ## progress bar
-    pb.freq <- progress_bar$new(format = "[:bar] :current/:total (:percent)", total = length(linkage.files))
-    pb.freq$tick(0)
-
-    message("Looping over .freq files")
-    for(file in 1:length(freq.files)){
-      pb.freq$tick()
-
-      #### SAMPLE ID INFORMATION FOR OUTPUT FILES
-      sample.name <- str_replace(freq.files[file], "_0\\..*$", "")
-      plot.name <- str_c(sample.name, species.num, str_c("PID=0.", pid_value), sep= "-")
-
-
-      ## CHECK TO MAKE SURE BREADTH > 0.6
-      ## if not, then skip this sample and move to the next iteration of the loop
-      log.file <- str_c(sample.name, ".", species.num, ".pid", pid_value, ".log")
-      samp.breadth <- summarize_log_files(path= file.path(path, "log_files"), filename= log.file) %>%
-        select(breadth)
-
-      if(samp.breadth < min.breadth){
-        message("Breadth <0.6, skipping sample: ", sample.name)
-        next()
-      }
-      #### READ IN THE DATA
-      freq.df <- suppressMessages(read_tsv(file.path(dir_input, freq.files[file]), progress= FALSE)) %>%
-        rename(row_num= X1)
-
-      ## Count histogram frequencies
-      freq.counts <- freq.df %>%
-        mutate(freq.rounded= round(freq, 3)) %>%
-        count(freq.rounded)
-
-
-      #### MAKE PLOTS
-      # ggplot(data= freq.df, aes(x= freq)) +
-      #   geom_histogram(binwidth= 0.01, color= "black", fill= "snow2") +
-      #   labs(x= "SNV frequency", y= "Count", title= plot.name) +
-      #   scale_x_continuous(expand= c(0.01, 0), breaks= seq(0, 1, by= 0.1)) +
-      #   theme_snv
-      # #ggsave(last_plot(), filename= str_c(plot.name, "_freq", ".pdf"), width= 8, height= 6, units= "in", path= dir_output, device= cairo_pdf)
-      # ggsave(last_plot(), filename= str_c(plot.name, "_freq", ".jpg"), width= 8, height= 6, units= "in", dpi= 320, path= dir_output)
-
-      ggplot(freq.counts, aes(x= freq.rounded, y= n)) +
-        geom_vline(xintercept= 0.5, size= 0.25, color= "gray") +
-        geom_point(size= 2, alpha= 0.5) +
-        geom_smooth(method= "loess", span= 0.1, se= FALSE, size= 1, color= "tomato") +
-        labs(x= "SNV frequency", y= "Count",  title= plot.name) +
-        scale_x_continuous(breaks= seq(0, 1, 0.1), limits= c(0, 1), expand= c(0.01, 0)) +
-        scale_y_continuous(breaks= scales::pretty_breaks()) +
-        #facet_wrap(~sample, ncol= 3, scales= "free_y") +
-        theme_snv
-      ggsave(last_plot(), filename= str_c(plot.name, "_freq", ".jpg"), width= 8, height= 6, units= "in", dpi= 320, path= dir_output)
-    }
-  }
-
-  return(mod.coef)
-}
-
 analyse_linkage_data <- function(freq_threshold= 0.05, ref_id, pid, path, output, linkage_plot= TRUE, freq_plot= TRUE, min.breadth= 0.6){
   ## LIBRARIES #################################################################
   require(tidyverse)
@@ -460,12 +151,6 @@ analyse_linkage_data <- function(freq_threshold= 0.05, ref_id, pid, path, output
                                       breaks= seq(0, 1, by= 0.25),
                                       expand= c(0.02, 0))
 
-
-
-  #pid.facet.labels <- as_labeller(c(`98` = "PID= 0.98", `96` = "PID= 0.96" ))
-  #facet.by.pid <- facet_grid(pid~., labeller= labeller(pid= pid.facet.labels, scales= "free_y"))
-
-
   ## ggplot theme for snv linkage
   theme_snv <- theme(panel.grid = element_blank(),
                      plot.margin = unit(c(1, 1, 1, 1), "cm"),
@@ -493,7 +178,15 @@ analyse_linkage_data <- function(freq_threshold= 0.05, ref_id, pid, path, output
     rm(counter)
 
     ## Initialize data frame to store model coefficients
-    mod.coef <- data.frame(sample= as.character(NULL), ref_id= as.character(NULL), pid= as.character(NULL), df= as.character(NULL), intercept= as.numeric(NULL), slope= as.numeric(NULL), r2_adj= as.numeric(NULL), p_value= as.numeric(NULL), stringsAsFactors= FALSE)
+    mod.coef <- data.frame(sample= as.character(NULL),
+                           ref_id= as.character(NULL),
+                           pid= as.character(NULL),
+                           df= as.character(NULL),
+                           intercept= as.numeric(NULL),
+                           slope= as.numeric(NULL),
+                           r2_adj= as.numeric(NULL),
+                           p_value= as.numeric(NULL),
+                           stringsAsFactors= FALSE)
 
     #### THE LOOP ####
     message("Looping over .linkage files")
@@ -538,26 +231,6 @@ analyse_linkage_data <- function(freq_threshold= 0.05, ref_id, pid, path, output
                  dist.bin= cut(Distance, breaks= 10),
                  scaffold= str_replace(Window, ":.*$", ""))
 
-
-        #### SUMMARIZE BY DISTANCE BIN
-        # snvs.sum <- snvs %>%
-        #   group_by(pid, scaffold, dist.bin) %>%
-        #   summarize(
-        #     N= length(r2),
-        #     r2.mean= mean(r2, na.rm= TRUE),
-        #     r2.sd= sd(r2, na.rm= TRUE)) %>%
-        #   ungroup() %>%
-        #   filter(complete.cases(.))
-
-        #### MAKE WIDE FORMAT AND MATRIX FOR HEATMAP
-        ## Average r^2 value per scaffold
-        #snvs.sum.wide <- snvs.sum %>%
-        #                select(-N, -r2.sd) %>%
-        #                spread(dist.bin, value= r2.mean)
-        #snvs.sum.96.mat <- as.matrix(snvs.sum.wide[snvs.sum.wide$pid == "96", ncol(snvs.sum.wide):3])
-        #snvs.sum.98.mat <- as.matrix(snvs.sum.wide[snvs.sum.wide$pid == "98", ncol(snvs.sum.wide):3])
-
-
         #### EXPONENTIAL DECAY MODEL
         ## use try() to make sure lm function did not error, otherwise loop crashes
         exp.model <- try(lm(log(r2) ~ Distance, data= subset(snvs, r2 > 0)))
@@ -596,7 +269,6 @@ analyse_linkage_data <- function(freq_threshold= 0.05, ref_id, pid, path, output
             y_axis_format +
             x_axis_format_distance +
             theme_snv
-          #ggsave(last_plot(), filename= str_c(plot.name, "_dist", ".pdf"), width= 8, height= 6, units= "in", path= dir_output, device= cairo_pdf)
           ggsave(last_plot(), filename= str_c(plot.name, "_dist", ".jpg"), width= 8, height= 6, units= "in", dpi= 320,  path= dir_output)
 
         } else {
@@ -616,43 +288,6 @@ analyse_linkage_data <- function(freq_threshold= 0.05, ref_id, pid, path, output
         ## Remove model dataframes for next iteration of the loop
         rm(exp.model.df)
 
-        # ## WINDOW x R^2
-        #   distance.color.ramp <- colorRampPalette(brewer.pal(9, "PuBu"))(length(levels(snvs$dist.bin)))
-        #
-        #   ggplot(data= snvs, aes(x= Window, y= r2)) +
-        #     geom_hline(yintercept = 0, size= 0.25) +
-        #     geom_point(aes(fill= dist.bin), color= "black", size= 2, pch= 21) +
-        #     #geom_errorbar() +
-        #     labs(x= "Window", y= expression(r^2), title= plot.name) +
-        #     scale_fill_manual(values= distance.color.ramp) +
-        #     y_axis_format +
-        #     x_axis_format_window +
-        #     facet.by.pid +
-        #     theme_snv
-        #   #ggsave(last_plot(), filename= str_c(plot.name, "_window", ".pdf"), width= 8, height= 6, units= "in", path= dir_output, device= cairo_pdf)
-        #   ggsave(last_plot(), filename= str_c(plot.name, "_window", ".jpg"), width= 8, height= 6, units= "in", dpi= 320,  path= dir_output)
-
-
-
-        ## R^2 HISTOGRAM WITH DIST.BIN
-        # ggplot(data= snvs, aes(x= r2)) +
-        #   geom_histogram(aes(fill= dist.bin), color= "black", binwidth= 0.01) +
-        #   #geom_errorbar() +
-        #   #labs(x= "Pairwise distance (bp)", y= expression(r^2), title= plot.name) +
-        #   scale_fill_manual(values= distance.color.ramp) +
-        #   scale_y_log10(expand= c(0.005, 0)) +
-        #   scale_x_continuous(expand= c(0.02, 0)) +
-        #   facet.by.pid +
-        #   theme_snv
-
-        ## MAKE HEATMAP, IF SPECIFIED IN FUNCTION
-        #if(heatmap == TRUE){
-        # pheatmap(t(snvs.sum.96.mat),
-        #          cluster_rows = FALSE,
-        #          cluster_cols = FALSE)
-        #         filename= file.path(dir_output, str_c(plot.name,"_heatmap.pdf")))
-        #}
-
       }
     }
 
@@ -663,24 +298,6 @@ analyse_linkage_data <- function(freq_threshold= 0.05, ref_id, pid, path, output
       mutate_at(vars(df:p_value), funs(as.numeric)) %>%
       as_tibble()
     write_tsv(mod.coef, path= file.path(dir_output_table, str_c("model_coef_", ref_id, ".tsv")))
-
-
-    ## PLOT HISTOGRAM OF MODEL SLOPES
-    # ggplot(mod.coef, aes(x= slope)) +
-    #   geom_histogram(color= "black", fill= "snow3", binwidth= 0.001 ) +
-    #   labs(x= "Slope coefficient", y= "Count", title= str_c("Slopes-", species.num)) +
-    #   scale_x_continuous(expand= c(0.01, 0)) +
-    #   theme_snv
-    # ggsave(last_plot(), filename= str_c("mod_coef_slope-", species.num,".jpg"), width= 8, height= 6, units= "in", dpi= 320,  path= dir_output)
-
-    ## PLOT HISTOGRAM OF MODEL ADJUSTED R^2
-    # ggplot(mod.coef, aes(x= r2_adj)) +
-    #   geom_histogram(color= "black", fill= "snow3", binwidth= 0.01) +
-    #   labs(x= expression(Adjusted~r^2), y= "Count", title= str_c("r^2_adj-", species.num)) +
-    #   scale_x_continuous(expand= c(0.01, 0)) +
-    #   theme_snv
-    # ggsave(last_plot(), filename= str_c("mod_coef_r2adj-", species.num,".jpg"), width= 8, height= 6, units= "in", dpi= 320,  path= dir_output)
-
   }
 
   #### LOOP OVER .FREQ FILES ###################################################
@@ -717,16 +334,6 @@ analyse_linkage_data <- function(freq_threshold= 0.05, ref_id, pid, path, output
       freq.counts <- freq.df %>%
         mutate(freq.rounded= round(freq, 3)) %>%
         count(freq.rounded)
-
-
-      #### MAKE PLOTS
-      # ggplot(data= freq.df, aes(x= freq)) +
-      #   geom_histogram(binwidth= 0.01, color= "black", fill= "snow2") +
-      #   labs(x= "SNV frequency", y= "Count", title= plot.name) +
-      #   scale_x_continuous(expand= c(0.01, 0), breaks= seq(0, 1, by= 0.1)) +
-      #   theme_snv
-      # #ggsave(last_plot(), filename= str_c(plot.name, "_freq", ".pdf"), width= 8, height= 6, units= "in", path= dir_output, device= cairo_pdf)
-      # ggsave(last_plot(), filename= str_c(plot.name, "_freq", ".jpg"), width= 8, height= 6, units= "in", dpi= 320, path= dir_output)
 
       ggplot(freq.counts, aes(x= freq.rounded, y= n)) +
         geom_vline(xintercept= 0.5, size= 0.25, color= "gray") +
@@ -809,329 +416,10 @@ make_multi_panel_fig <- function(path, file.pattern=NULL, file.list=NULL, output
   rm(multi_fig, last_file)
 }
 
-#### FILTER R^2 FILE BY SNV FREQUENCY ####
 
-# path= dir_input_sp1
-# output= dir_output_fig
-# species= 1
-# pid= 98
-#min.freq <- c(0.1, 0.2)
-#max.freq <- c(0.2, 0.3)
-# direction= ">"
-# min.snv.sites= snv.minimum
+#### FILTER R^2 FILE BY SNV FREQ  ####
 
-
-filter_snv_freq <- function(path, output, ref_id, pid, filter.values= 0, direction= ">", min.snv.sites= 100){
-  ## LIBRARIES #################################################################
-  require(tidyverse)
-  require(progress)
-  require(ggplot2)
-  require(hexbin)
-  require(RColorBrewer)
-  require(multipanelfigure)
-
-  ## CHECK FOR ERRORS ############################################################
-  if(str_detect(as.character(pid), "\\.")){
-    stop("pid must be an integer with no decimals (e.g. 0.99 = 99)")
-  }
-
-  if(any(filter.values > 0.5)){
-    stop("filter.values must be < 0.5 (and include a zero and decimal). \nThe function will also filter by (1 - filter.values)")
-  }
-
-  if(all(c(direction != ">", direction != "<"))){
-    stop("direction must be the characters < or >, indicating if filtering keeps values above or below the filtering value")
-  }
-
-  ## DEFINE VARIABLES ############################################################
-  if(direction == ">"){
-    message(paste("filtering by freq", direction, str_c(as.character(filter.values), " and ", "<"," ", str_c(1-filter.values),  "\n")))
-  }
-  if(direction == "<"){
-    message(paste("filtering by freq", direction, str_c(as.character(filter.values), " and ", ">"," ", str_c(1-filter.values),  "\n")))
-  }
-  species.num <- paste0("species_", species)
-  pid_value <- as.character(pid)
-  linkage.files <- list.files(file.path(path), pattern= str_c(pid_value, "linkage", sep= "."))
-  linkage.sample <- str_replace(linkage.files, "_0\\..*$", "")
-  freq.files <- list.files(file.path(path), pattern= str_c(pid_value, "freq", sep= "."))
-  freq.sample <- str_replace(freq.files, "_0\\..*$", "")
-
-  ## Initialize data frame to store model coefficients and filtering summary statistics
-  summary.table <- data.frame(sample= as.character(NULL),
-                              species= as.character(NULL),
-                              pid= as.character(NULL),
-                              direction= as.character(NULL),
-                              filter_threshold= as.character(NULL),
-                              df= as.character(NULL),
-                              intercept= as.numeric(NULL),
-                              slope= as.numeric(NULL),
-                              r2_adj= as.numeric(NULL),
-                              p_value= as.numeric(NULL),
-                              prop_r2_equals_1= as.numeric(NULL),
-                              stringsAsFactors= FALSE)
-
-
-
-  ## ggplot theme for snv linkage
-  theme_snv <- theme(panel.grid = element_blank(),
-                     plot.margin = unit(c(1, 1, 1, 1), "cm"),
-                     text = element_text(size= 14),
-                     plot.background = element_rect(fill = "transparent"), # bg of the plot
-                     panel.background = element_rect(fill= "transparent", color="black"),
-                     axis.text = element_text(colour="black"),
-                     axis.title.x = element_text(vjust = -0.75),
-                     axis.title.y = element_text(vjust = 1.5),
-                     legend.background = element_rect(size=0.25, color="black", fill= "transparent"),
-                     legend.key = element_blank(),
-                     strip.background=element_rect(fill="transparent", color="transparent"),
-                     legend.position = "top")
-  hex.color.gradient <- scale_fill_gradient(name = "count", trans = "log10", low= "black", high= "deepskyblue", breaks= c(1, 10, 100, 1000), limits= c(1, 1000))
-  y.axis.format <- scale_y_continuous(limits= c(0, 1))
-
-
-  ## Progress bar
-  message("Looping over files")
-  pb.freq.filt <- progress_bar$new(format = "[:bar] :current/:total (:percent)", total = length(linkage.files))
-  pb.freq.filt$tick(0)
-  #file=11
-  ## LOOP OVER LINKAGE FILES ############################################################
-  for(file in 1:length(linkage.files)){
-    pb.freq.filt$tick() ## Progress Bar
-
-    sample.name <- str_replace(linkage.files[file], "_0\\..*$", "")
-
-    ## CHECK TO MAKE SURE AT LEAST 100 SNV SITES
-    ## if not, then skip this sample and move to the next iteration of the loop
-    log.file <- str_c(sample.name, ".", species.num, ".pid", pid_value, ".log")
-    snv.sites <- summarize_log_files(path= file.path(path, "log_files"), filename= log.file) %>%
-      select(snv_sites)
-
-    if(snv.sites < min.snv.sites){
-      message("<100 SNV sites, skipping sample: ", sample.name)
-      next()
-    }
-
-    freq.file <- suppressMessages(read_tsv(file.path(path, freq.files[file]), progress = FALSE)) %>%
-      mutate(pid= pid_value) %>%
-      filter(complete.cases(.)) %>%
-      rename(row_num= X1)
-
-    link.file <- suppressMessages(read_tsv(file.path(path, linkage.files[file]), progress= FALSE)) %>%
-      mutate(pid= pid_value) %>%
-      filter(complete.cases(.)) %>%
-      rename(row_num= X1) %>%
-      mutate(r2= ifelse(r2 > 1, 1, r2)) %>%  # some r2 values seem to be just above 1
-      separate(total_A, sep="'", into= c("sep1", "snv_A", "sep2"), remove= FALSE) %>%
-      separate(total_a, sep="'", into= c("sep1", "snv_a", "sep2"), remove= FALSE) %>%
-      separate(total_B, sep="'", into= c("sep1", "snv_B", "sep2"), remove= FALSE) %>%
-      separate(total_b, sep="'", into= c("sep1", "snv_b", "sep2"), remove= FALSE) %>%
-      select(-sep1, -sep2)
-
-    link.file.long <- link.file %>%
-      gather(key= "allele", value= "SNV", c(snv_A, snv_a, snv_B, snv_b)) %>%
-      left_join(subset(freq.file, select= -c(row_num, Window, pid)))
-
-    link.file.wide <- link.file.long %>%
-      select(-SNV) %>%
-      spread(key= allele, value= freq) %>%
-      rename(freq_A= snv_A, freq_a= snv_a, freq_B= snv_B, freq_b= snv_b)
-
-    ## EXPONENTIAL DECAY MODEL
-    ## use try() to make sure lm function did not error, otherwise loop crashes
-    exp.model.unfiltered <- try(lm(log(r2) ~ Distance, data= subset(link.file, r2 > 0)))
-
-    ## Make dataframes of predicted data for ggplots below
-    if(class(exp.model.unfiltered) != "try-error"){
-      exp.model.unfiltered.df <- data.frame(pid= pid_value,
-                                            dist.values= link.file$Distance,
-                                            pred.values= exp(predict(exp.model.unfiltered, list(Distance= link.file$Distance))))
-      p.value <- try(round(summary(exp.model.unfiltered)$coefficients["Distance", "Pr(>|t|)"], 5))
-
-      ## CALCULATE PROPORTION OF R^2 = 1
-      prop_r2_1_unfiltered <- link.file %>%
-        count(r2 == 1) %>%
-        mutate(freq= n / sum(n)) %>%
-        select(freq) %>%
-        slice(2) %>%
-        pull()
-    }
-    if(class(p.value) == "try-error"){
-      p.value <- NA
-      prop_r2_1_unfiltered <- NA
-    }
-
-
-    ## Initialize list to store plots
-    plot.list <- rep(list(NULL), length(filter.values)+1)
-    names(plot.list)[1] <- "unfiltered_freq"
-    for(id in 2:length(plot.list)){
-      names(plot.list)[id] <- str_c("filtered_freq_", direction, filter.values[id-1])
-    }
-
-    plot.list[[1]] <- ggplot(data= link.file, aes(x= Distance, y= r2)) +
-      geom_hline(yintercept = 0, size= 0.25) +
-      geom_hex(bins= 50) +
-      geom_line(data = exp.model.unfiltered.df, aes(x= dist.values, y = pred.values), color= "tomato", size= 1) +
-      labs(x= "Pairwise distance (bp)", y= expression(r^2), title= str_c(sample.name, species.num, str_c("PID=0.", pid_value), str_c("freq=ALL"), sep= "-")) +
-      y.axis.format +
-      hex.color.gradient +
-      theme_snv
-
-
-
-    if(exists("counter") == FALSE){
-      counter <- 1
-    }
-
-    summary.table[counter, ] <- c(sample.name, species.num, pid_value, "unfiltered", "unfiltered",
-                                  summary(exp.model.unfiltered)$df[2],
-                                  round(exp.model.unfiltered$coefficients[1], 5),
-                                  round(exp.model.unfiltered$coefficients[2], 5),
-                                  round(summary(exp.model.unfiltered)$adj.r.squared, 4),
-                                  p.value,
-                                  round(prop_r2_1_unfiltered, 4))
-
-    counter <- counter + 1
-    #f=3
-    ## LOOP OVER FREQUENCY FILTER VALUES #######################################
-    for(f in 1:length(filter.values)){
-      plot.name <- str_c(sample.name, species.num, str_c("PID=0.", pid_value), str_c("freq=", filter.values[f]), sep= "-")
-
-      if(direction == ">"){
-        link.file.filtered <- link.file.wide %>%
-          filter_at(vars(starts_with("freq")), all_vars(. > filter.values[f] & . < 1-filter.values[f]))
-      }
-
-      if(direction == "<"){
-        link.file.filtered <- link.file.wide %>%
-          filter_at(vars(starts_with("freq")), all_vars(. < filter.values[f] | . > 1-filter.values[f]))
-      }
-
-      ## EXPONENTIAL DECAY MODEL
-      ## use try() to make sure lm function did not error, otherwise loop crashes
-      exp.model.filtered <- try(lm(log(r2) ~ Distance, data= subset(link.file.filtered, r2 > 0)))
-      #summary(exp.model.filtered)
-
-      ## Make dataframes of predicted data for ggplots below
-      if(class(exp.model.filtered) != "try-error"){
-        exp.model.filtered.df <- data.frame(pid= pid_value,
-                                            filt= as.character(filter.values[f]),
-                                            dist.values= link.file.filtered$Distance,
-                                            pred.values= exp(predict(exp.model.filtered, list(Distance= link.file.filtered$Distance))))
-        df.model <- summary(exp.model.filtered)$df[2]
-        p.value <- try(round(summary(exp.model.filtered)$coefficients["Distance", "Pr(>|t|)"], 5))
-        intercept <- try(round(exp.model.filtered$coefficients[1], 5))
-        slope.distance <- try(round(exp.model.filtered$coefficients[2], 5))
-        r2_adjusted <- round(summary(exp.model.filtered)$adj.r.squared, 4)
-
-        ## CALCULATE PROPORTION OF R^2 = 1
-        prop_r2_1 <- link.file.filtered %>%
-          count(r2 == 1) %>%
-          mutate(freq= n / sum(n)) %>%
-          select(freq) %>%
-          slice(2) %>%
-          pull()
-      } else {
-        df.model <- NA
-        p.value <- NA
-        intercept <- NA
-        slope.distance <- NA
-        r2_adjusted <- NA
-      }
-
-      if(length(prop_r2_1) == 0){
-        prop_r2_1 <- NA
-      }
-
-      if(class(p.value) == "try-error" | is.nan(p.value)){
-        p.value <- NA
-        intercept <- NA
-        slope.distance <- NA
-      }
-
-      ## Export model coefficients to a table
-      #if(exists("exp.model.filtered.df")){
-      summary.table[counter, ] <- c(sample.name, species.num, pid_value, direction, filter.values[f],
-                                    df.model,
-                                    intercept,
-                                    slope.distance,
-                                    r2_adjusted,
-                                    p.value,
-                                    prop_r2_1)
-      counter <- counter + 1
-      #}
-
-
-      ## PLOT THE FILTERED DATA
-      if(exists("exp.model.filtered.df")){
-        plot.list[[f+1]] <- ggplot(data= link.file.filtered, aes(x= Distance, y= r2)) +
-          geom_hline(yintercept = 0, size= 0.25) +
-          geom_hex(bins= 50) +
-          geom_line(data = exp.model.filtered.df, aes(x= dist.values, y = pred.values), color= "tomato", size= 1) +
-          labs(x= "Pairwise distance (bp)", y= expression(r^2), title= str_c(sample.name, species.num, str_c("PID=0.", pid_value), str_c("freq", direction, filter.values[f]), sep= "-")) +
-          y.axis.format +
-          hex.color.gradient +
-          theme_snv
-      } else {
-        plot.list[[f+1]] <- ggplot(data= link.file.filtered, aes(x= Distance, y= r2)) +
-          geom_hline(yintercept = 0, size= 0.25) +
-          geom_hex(bins= 50) +
-          #geom_line(data = exp.model.filtered.df, aes(x= dist.values, y = pred.values), color= "tomato", size= 1) +
-          geom_label(aes(x= 10, y= 0.5, label= "No SNVs meet filtering threshold"), size= 8) +
-          labs(x= "Pairwise distance (bp)", y= expression(r^2), title= str_c(sample.name, species.num, str_c("PID=0.", pid_value), str_c("freq", direction, filter.values[f]), sep= "-")) +
-          y.axis.format +
-          hex.color.gradient +
-          theme_snv
-      }
-      ## Remove model results for the next round of the loop
-      rm(exp.model.filtered.df)
-    }
-
-
-    # Make blank multi-panel figure
-    num.figs <- length(plot.list)
-    multi_fig <- multi_panel_figure(width= 250*num.figs, units= "mm", rows= 1, columns= num.figs, row_spacing= 0, column_spacing= 0, panel_label_type = "none")
-    # Loop to fill panels
-    for(fig in 1:num.figs){
-      multi_fig <- suppressMessages(fill_panel(figure= multi_fig, panel= plot.list[[fig]], panel_clip= "on"))
-    }
-
-    # Save figure
-    multi_plot_name <- str_c(sample.name,"-" ,species.num, "-pid", pid_value, "-filtered-", direction, ".jpg")
-    save_multi_panel_figure(multi_fig, filename= file.path(output, multi_plot_name), dpi= 320)
-    rm(multi_fig)
-
-
-
-  }
-
-  ## Clean up summary table and write to TSV file
-  message("Writing summary table to .tsv")
-  summary.table <- summary.table %>%
-    mutate_at(vars(intercept:prop_r2_equals_1), funs(as.numeric)) %>%
-    as_tibble() %>%
-    slice(-1)
-  write_tsv(summary.table, path= file.path(output, str_c("filter_summary-pid", pid_value, "-", species.num, "-", direction, ".tsv")))
-
-  return(summary.table)
-
-}
-
-
-#### FILTER R^2 FILE BY SNV FREQ WITH A WINDOW ####
-
-
-# path= dir_input_sp3
-# output= dir_output_fig
-# species= 3
-# pid= 98
-# min.freq <- c(0.1, 0.2)
-# max.freq <- c(0.2, 0.3)
-# min.snv.sites= snv.minimum
-
-
-filter_snv_freq_window <- function(path, output, species, pid, max.freq= 0, min.freq= 0, min.snv.sites= 100, overwrite= TRUE){
+filter_snv_freq_window <- function(path, output, ref_id= NULL, pid, max.freq= 0, min.freq= 0, min.snv.sites= 100, overwrite= TRUE){
   ## LIBRARIES #################################################################
   require(tidyverse)
   require(progress)
@@ -1163,7 +451,6 @@ filter_snv_freq_window <- function(path, output, species, pid, max.freq= 0, min.
 
   message(paste("filtering by >", str_c(as.character(min.freq), " and < ", str_c(as.character(max.freq), "\n"))))
 
-  species.num <- paste0("species_", species)
   pid_value <- as.character(pid)
   linkage.files <- list.files(file.path(path), pattern= str_c(pid_value, "linkage", sep= "."))
   linkage.sample <- str_replace(linkage.files, "_0\\..*$", "")
@@ -1172,7 +459,7 @@ filter_snv_freq_window <- function(path, output, species, pid, max.freq= 0, min.
 
   ## Initialize data frame to store model coefficients and filtering summary statistics
   summary.table <- data.frame(sample= as.character(NULL),
-                              species= as.character(NULL),
+                              ref_id= as.character(NULL),
                               pid= as.character(NULL),
                               filter_window= as.character(NULL),
                               df= as.character(NULL),
@@ -1214,7 +501,7 @@ filter_snv_freq_window <- function(path, output, species, pid, max.freq= 0, min.
 
     ## CHECK TO MAKE SURE AT LEAST 100 SNV SITES
     ## if not, then skip this sample and move to the next iteration of the loop
-    log.file <- str_c(sample.name, ".", species.num, ".pid", pid_value, ".log")
+    log.file <- str_c(sample.name, ".", ref_id, ".pid", pid_value, ".log")
     snv.sites <- summarize_log_files(path= file.path(path, "log_files"), filename= log.file) %>%
       select(snv_sites)
 
@@ -1285,18 +572,18 @@ filter_snv_freq_window <- function(path, output, species, pid, max.freq= 0, min.
       geom_point(color= "transparent") +
       geom_hex(bins= 50) +
       geom_line(data = exp.model.unfiltered.df, aes(x= dist.values, y = pred.values), color= "tomato", size= 1) +
-      labs(x= "Pairwise distance (bp)", y= expression(r^2), title= str_c(sample.name, species.num, str_c("PID=0.", pid_value), str_c("freq=ALL"), sep= "-")) +
+      labs(x= "Pairwise distance (bp)", y= expression(r^2), title= str_c(sample.name, ref_id, str_c("PID=0.", pid_value), str_c("freq=ALL"), sep= "-")) +
     #  y.axis.format +
       hex.color.gradient +
       theme_snv
-
 
 
     if(exists("counter") == FALSE){
       counter <- 1
     }
 
-    summary.table[counter, ] <- c(sample.name, species.num, pid_value, "unfiltered",
+    ## Add unfiltered SNV data to summary.table
+    summary.table[counter, ] <- c(sample.name, ref_id, pid_value, "unfiltered",
                                   summary(exp.model.unfiltered)$df[2],
                                   round(exp.model.unfiltered$coefficients[1], 5),
                                   round(exp.model.unfiltered$coefficients[2], 5),
@@ -1305,10 +592,10 @@ filter_snv_freq_window <- function(path, output, species, pid, max.freq= 0, min.
                                   round(prop_r2_1_unfiltered, 4))
 
     counter <- counter + 1
-    #f=1
+
     ## LOOP OVER FREQUENCY FILTER VALUES #######################################
     for(f in 1:length(min.freq)){
-      plot.name <- str_c(sample.name, species.num, str_c("PID=0.", pid_value), str_c("freq=", min.freq[f], "-", max.freq[f]), sep= "-")
+      plot.name <- str_c(sample.name, ref_id, str_c("PID=0.", pid_value), str_c("freq=", min.freq[f], "-", max.freq[f]), sep= "-")
 
       filter.window <- str_c(min.freq[f], max.freq[f], sep= "_")
 
@@ -1360,7 +647,7 @@ filter_snv_freq_window <- function(path, output, species, pid, max.freq= 0, min.
 
       ## Export model coefficients to a table
       #if(exists("exp.model.filtered.df")){
-      summary.table[counter, ] <- c(sample.name, species.num, pid_value, filter.window,
+      summary.table[counter, ] <- c(sample.name, ref_id, pid_value, filter.window,
                                     df.model,
                                     intercept,
                                     slope.distance,
@@ -1378,7 +665,7 @@ filter_snv_freq_window <- function(path, output, species, pid, max.freq= 0, min.
           geom_point(color= "transparent") +
           geom_hex(bins= 50) +
           geom_line(data = exp.model.filtered.df, aes(x= dist.values, y = pred.values), color= "tomato", size= 1) +
-          labs(x= "Pairwise distance (bp)", y= expression(r^2), title= str_c(sample.name, species.num, str_c("PID=0.", pid_value), str_c("freq=",filter.window), sep= "-")) +
+          labs(x= "Pairwise distance (bp)", y= expression(r^2), title= str_c(sample.name, ref_id, str_c("PID=0.", pid_value), str_c("freq=",filter.window), sep= "-")) +
           hex.color.gradient +
           theme_snv
       } else {
@@ -1388,7 +675,7 @@ filter_snv_freq_window <- function(path, output, species, pid, max.freq= 0, min.
           geom_hex(bins= 50) +
           #geom_line(data = exp.model.filtered.df, aes(x= dist.values, y = pred.values), color= "tomato", size= 1) +
           geom_label(aes(x= 10, y= 0.5, label= "No SNVs meet filtering threshold"), size= 8) +
-          labs(x= "Pairwise distance (bp)", y= expression(r^2), title= str_c(sample.name, species.num, str_c("PID=0.", pid_value), str_c("freq=",filter.window), sep= "-")) +
+          labs(x= "Pairwise distance (bp)", y= expression(r^2), title= str_c(sample.name, ref_id, str_c("PID=0.", pid_value), str_c("freq=",filter.window), sep= "-")) +
           hex.color.gradient +
           theme_snv
       }
@@ -1406,18 +693,18 @@ filter_snv_freq_window <- function(path, output, species, pid, max.freq= 0, min.
     }
 
     # Save figure
-    multi_plot_name <- str_c(sample.name,"-" ,species.num, "-pid", pid_value, "-filtered_window", ".jpg")
+    multi_plot_name <- str_c(sample.name,"-" , ref_id, "-pid", pid_value, "-filtered_window", ".jpg")
 
     if(overwrite == FALSE){
       if(length(list.files(file.path(output), pattern= multi_plot_name)) > 0){
         num.files <- length(list.files(file.path(output), pattern= multi_plot_name))
-        multi_plot_name <- str_c(sample.name,"-" ,species.num, "-pid", pid_value, "-filtered_window-", num.files+1, ".jpg")
+        multi_plot_name <- str_c(sample.name,"-" ,ref_id, "-pid", pid_value, "-filtered_window-", num.files+1, ".jpg")
       }
     }
 
     save_multi_panel_figure(multi_fig, filename= file.path(output, multi_plot_name), dpi= 320, limitsize= FALSE)
     rm(multi_fig)
-    str_c(sample.name,"-" ,species.num, "-pid", pid_value, "-filtered_window-", ".jpg")
+    str_c(sample.name,"-" ,ref_id, "-pid", pid_value, "-filtered_window-", ".jpg")
 
   }
 
@@ -1429,10 +716,10 @@ filter_snv_freq_window <- function(path, output, species, pid, max.freq= 0, min.
     slice(-1)
 
   if(overwrite == TRUE){
-    write_tsv(summary.table, path= file.path(output, str_c("filter_summary-pid", pid_value, "-", species.num, ".tsv")))
+    write_tsv(summary.table, path= file.path(output, str_c("filter_summary-pid", pid_value, "-", ref_id, ".tsv")))
   } else {
-    num.tables <- length(list.files(file.path(output), pattern= str_c("filter_summary-pid", pid_value, "-", species.num)))
-    write_tsv(summary.table, path= file.path(output, str_c("filter_summary-pid", pid_value, "-", species.num, "-", num.tables+1, ".tsv")))
+    num.tables <- length(list.files(file.path(output), pattern= str_c("filter_summary-pid", pid_value, "-", ref_id)))
+    write_tsv(summary.table, path= file.path(output, str_c("filter_summary-pid", pid_value, "-", ref_id, "-", num.tables+1, ".tsv")))
   }
 
   return(summary.table)
