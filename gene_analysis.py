@@ -28,7 +28,7 @@ def characterize_snp(gene_fasta, freq_file):
     print("assigning snps to genes")
     freq = pd.read_table(freq_file)
 
-    for snp in freq.itterrows():
+    for snp in freq.iterrows():
         #get gene for this snp
         if snp['SNV'].split(":")[0] in gene_index:
             gene = gene_index[snp]
