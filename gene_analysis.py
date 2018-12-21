@@ -17,6 +17,7 @@ def characterize_snp(gene_fasta, freq_file):
     seqs = {}
     for record in SeqIO.parse(gene_fasta, 'fasta'):
         gene = str(record.id)
+        gene_scaf = "_".join(gene.split("_")[:-1])
         gene_start = int(record.description.split("#")[1].strip())
         gene_end = int(record.description.split("#")[2].strip())
         gene_starts[gene] = gene_start
