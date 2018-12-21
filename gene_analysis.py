@@ -22,7 +22,7 @@ def characterize_snp(gene_fasta, freq_file):
         gene_starts[gene] = gene_start
         seqs[gene] = record.seq
         for i in range(gene_start, gene_end+1):
-            gene_index[gene_scaf + "_" + str(i)] = feature['feature']
+            gene_index[gene_scaf + "_" + str(i)] = gene
 
     print("assigning snps to genes")
     freq = pd.read_table(freq_file)
