@@ -15,17 +15,26 @@ def characterize_snp(gene_fasta, freq_file):
     gene_index = {}
     gene_starts = {}
     seqs = {}
+    gene_direction = {}
+    complete_genes = 0.0
+    partial_genes = 0.0
     for record in SeqIO.parse(gene_fasta, 'fasta'):
         gene = str(record.id)
-        gene_scaf = "_".join(gene.split("_")[:-1])
-        # NOTE: PRODIGAL USES A 1-BASED INDEX AND WE USE 0, SO CONVERT TO 0 HERE 
-        gene_start = int(record.description.split("#")[1].strip())-1
-        gene_end = int(record.description.split("#")[2].strip())-1 
-        gene_starts[gene] = gene_start
-        seqs[gene] = record.seq
-        for i in range(gene_start, gene_end+1):
-            gene_index[gene_scaf + "_" + str(i)] = gene
+        if 'partial=00' in record.description:
+            complete_genes += 1
+            gene_scaf = "_".join(gene.split("_")[:-1])
+            gene_direction[gene] = record.description.split("#")[3].strip()
+            # NOTE: PRODIGAL USES A 1-BASED INDEX AND WE USE 0, SO CONVERT TO 0 HERE 
+            gene_start = int(record.description.split("#")[1].strip())-1
+            gene_end = int(record.description.split("#")[2].strip())-1
+            gene_starts[gene] = gene_start
+            seqs[gene] = record.seq
+            for i in range(gene_start, gene_end+1):
+                gene_index[gene_scaf + "_" + str(i)] = gene
+        else:
+            partial_genes += 1
 
+    print("Notice: " + str(partial_genes *100 / (complete_genes + partial_genes)) + "% of genes were incomplete and snps in these genes were marked I")
     print("assigning snps to genes")
     freq = pd.read_table(freq_file)
 
@@ -39,13 +48,21 @@ def characterize_snp(gene_fasta, freq_file):
             #calculate position of SNP within gene (0 based index)
             snp_start = int(snp['SNV'].split(":")[0].split("_")[-1]) - gene_absolute_start
             original_sequence = seqs[gene]
+            if gene_direction[gene] == '-1': #need to do some flipping if we want to have the positions right....
+                original_sequence = original_sequence.reverse_complement()
+
             new_sequence = original_sequence.tomutable()
             new_sequence[snp_start] = snp['SNV'].split(":")[1].strip()
             new_sequence = new_sequence.toseq()
-            #print(str(snp_start) + "\t" + new_sequence[snp_start] + "\t" + original_sequence[snp_start])
+
             if new_sequence[snp_start] != original_sequence[snp_start]:
-                old_aa_sequence = original_sequence.translate()
-                new_aa_sequence = new_sequence.translate()
+                if gene_direction[gene] == '-1':
+                    old_aa_sequence = original_sequence.reverse_complement().translate()
+                    new_aa_sequence = new_sequence.reverse_complement().translate()
+                else:
+                    old_aa_sequence = original_sequence.translate()
+                    new_aa_sequence = new_sequence.translate()
+
                 mut = 'S:' + str(snp_start)
                 for aa in range(0, len(old_aa_sequence)):
                     if new_aa_sequence[aa] != old_aa_sequence[aa]:
@@ -57,9 +74,9 @@ def characterize_snp(gene_fasta, freq_file):
             mut = 'I'
         freq.at[index,'mutation'] = mut
 
-    print("results:")
+    print("results head:")
     print(freq.head(100))
-
+    freq.to_csv(freq_file.split(".freq")[0] + "_aa.freq",sep='\t', quoting=csv.QUOTE_NONE)
 
 def create_gene_index(gene_file):
     ## Read in gene file
