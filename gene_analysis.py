@@ -18,8 +18,9 @@ def characterize_snp(gene_fasta, freq_file):
     for record in SeqIO.parse(gene_fasta, 'fasta'):
         gene = str(record.id)
         gene_scaf = "_".join(gene.split("_")[:-1])
-        gene_start = int(record.description.split("#")[1].strip())
-        gene_end = int(record.description.split("#")[2].strip())
+        # NOTE: PRODIGAL USES A 1-BASED INDEX AND WE USE 0, SO CONVERT TO 0 HERE 
+        gene_start = int(record.description.split("#")[1].strip())-1
+        gene_end = int(record.description.split("#")[2].strip())-1 
         gene_starts[gene] = gene_start
         seqs[gene] = record.seq
         for i in range(gene_start, gene_end+1):
@@ -28,24 +29,25 @@ def characterize_snp(gene_fasta, freq_file):
     print("assigning snps to genes")
     freq = pd.read_table(freq_file)
 
-    for snp in freq.iterrows():
+    for index,snp in freq.iterrows():
         #get gene for this snp
         if snp['SNV'].split(":")[0] in gene_index:
-            gene = gene_index[snp]
-            gene_absolute_start = gene_starts['start']
+            gene = gene_index[snp['SNV'].split(":")[0]]
+
+            gene_absolute_start = gene_starts[gene]
 
             #calculate position of SNP within gene (0 based index)
-            snp_start = int(snp[position].split("_")[-1]) - gene_absolute_start
-
+            snp_start = int(snp['SNV'].split(":")[0].split("_")[-1]) - gene_absolute_start
             original_sequence = seqs[gene]
-            new_sequence = original_sequence
+            new_sequence = original_sequence.tomutable()
             new_sequence[snp_start] = snp['SNV'].split(":")[1].strip()
-
+            new_sequence = new_sequence.toseq()
+            #print(str(snp_start) + "\t" + new_sequence[snp_start] + "\t" + original_sequence[snp_start])
             if new_sequence[snp_start] != original_sequence[snp_start]:
                 old_aa_sequence = original_sequence.translate()
                 new_aa_sequence = new_sequence.translate()
                 mut = 'S:' + str(snp_start)
-                for aa in range(0, len(old_aa_sequence)+1):
+                for aa in range(0, len(old_aa_sequence)):
                     if new_aa_sequence[aa] != old_aa_sequence[aa]:
                         mut = 'N:' + str(old_aa_sequence[aa]) + str(snp_start) + str(new_aa_sequence[aa])
                         break
@@ -53,9 +55,10 @@ def characterize_snp(gene_fasta, freq_file):
                 mut = 'C'
         else:
             mut = 'I'
-        freq['mutation'] = mut
+        freq.at[index,'mutation'] = mut
 
-    freq.head()
+    print("results:")
+    print(freq.head(100))
 
 
 def create_gene_index(gene_file):
