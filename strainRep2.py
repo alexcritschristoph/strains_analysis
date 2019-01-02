@@ -421,6 +421,8 @@ class SNVdata:
                 consensus = False
                 # Yes there were reads at this position
                 if counts:
+                    all_counts[position] = counts
+                    
                     if sum(counts) > min_coverage:
                         total_positions += 1
                         pos_clonality = calculate_clonality(counts)
@@ -434,7 +436,6 @@ class SNVdata:
                     total_snv_sites += 1
                     windows_to_snvs[window].append(position)
                     snv_counts[position] = counts
-                    all_counts[position] = counts
                     # Get reads to snvs
 
                     for pileupread in pileupcolumn.pileups:
