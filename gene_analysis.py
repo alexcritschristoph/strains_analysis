@@ -5,7 +5,10 @@ import argparse
 import pandas as pd
 from tqdm import tqdm
 from Bio import SeqIO
+from Bio.codonalign import CodonSeq
 from collections import defaultdict
+from Bio.codonalign.codonalphabet import default_codon_alphabet, default_codon_table 
+
 
 def characterize_snp(gene_fasta, freq_file):
     ''' tests if SNPs are synonymous or non-synynomous with respect to a reference
@@ -72,7 +75,9 @@ def characterize_snp(gene_fasta, freq_file):
                 mut = 'C'
         else:
             mut = 'I'
+            gene = 'None'
         freq.at[index,'mutation'] = mut
+        freq.at[index,'gene'] = gene
 
     print("results head:")
     print(freq.head(100))
