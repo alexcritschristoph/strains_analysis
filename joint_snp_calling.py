@@ -69,7 +69,7 @@ print("")
 for pos in counts['all']:
     consensus = strainRep2.call_snv_site(counts['all'][pos], null_snp_model, min_cov = 20, min_freq = 0.05)
     if consensus:
-    	print("")
+        print("")
         #there is a SNP here
         print(pos.split(":")[0], end='')
         print("," + pos.split(":")[1], end='')
