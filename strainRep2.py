@@ -71,18 +71,36 @@ def calculate_clonality(counts, min_cov = 5):
     prob = (float(counts[0]) / sum(counts)) * (float(counts[0]) / sum(counts)) + (float(counts[1]) / sum(counts)) * (float(counts[1]) / sum(counts)) + (float(counts[2]) / sum(counts)) * (float(counts[2]) / sum(counts)) + (float(counts[3]) / sum(counts)) * (float(counts[3]) / sum(counts))
     return prob
 
+def generate_snp_model(model_file):
+    f = open(model_file)
+    model = defaultdict(lambda:0)
+    for line in f.readlines():
+        counts = line.split()[1:]
+        coverage = line.split()[0]
+        i = 0
+        for count in counts:
+            i += 1
+            if float(count) < 1e-6:
+                model[int(coverage)] = i
+                break
+    
+    model.default_factory = lambda:max(model.values())
 
-def call_snv_site(counts, min_cov = 5, min_snp = 3, min_freq=0.05):
+    return model
+
+
+def call_snv_site(counts, null_model, min_cov=5, min_freq=0.05):
     '''
     Determines whether a site has a variant based on its nucleotide count frequencies.
     '''
     P2C = {'A':0, 'C':1, 'T':2, 'G':3}
     C2P = {0:'A', 1:'C', 2:'T', 3:'G'}
     total =  sum(counts)
+    
     if total >= min_cov:
         i = 0
         for c in counts:
-            if c >= min_snp and float(c) / total >= min_freq:
+            if c >= null_model[total] and float(c) / total >= min_freq:
                 i += 1
         if i > 1:
             return C2P[counts.index(max(counts))]
@@ -396,6 +414,9 @@ class SNVdata:
         snv_counts = {}
         coverages = {}
 
+        # read null model 
+        null_snp_model = generate_snp_model('./combined_null1000000.txt')
+
         ## Start reading BAM
         samfile = pysam.AlignmentFile(bam)
         sample = bam.split("/")[-1].split(".bam")[0]
@@ -427,11 +448,13 @@ class SNVdata:
                         total_positions += 1
                         pos_clonality = calculate_clonality(counts)
                         clonality_by_window[window].append([position, pos_clonality])
-                        consensus = call_snv_site(counts, min_cov = min_coverage, min_snp = min_snp, min_freq = min_freq)
+                        consensus = call_snv_site(counts, null_snp_model, min_cov = min_coverage, min_freq = min_freq)
                         coverages[position] = sum(counts)
 
                 ## Strep 2: Is there an SNV at this position?
                 if consensus:
+                    #min_snp for this site
+                    local_min_snp = null_snp_model[sum(counts)]
                     #there's an SNV at this site
                     total_snv_sites += 1
                     windows_to_snvs[window].append(position)
@@ -445,7 +468,7 @@ class SNVdata:
                                 try:
                                     val = pileupread.alignment.query_sequence[pileupread.query_position]
                                     #if value is not the consensus value
-                                    if counts[P2C[val]] >= min_snp and float(counts[P2C[val]]) / sum(counts) >= min_freq:
+                                    if counts[P2C[val]] >= local_min_snp and float(counts[P2C[val]]) / sum(counts) >= min_freq:
                                         #this is a variant read!
                                         read_to_snvs[read_name].append(position + ":" + val)
                                         if val != consensus:
@@ -456,7 +479,7 @@ class SNVdata:
                     # Add to frequencies
                     nucl_count = 0
                     for nucl in counts:
-                        if nucl >= min_snp:
+                        if nucl >= local_min_snp:
                             freq = float(nucl) / float(sum(counts))
                             if freq >= min_freq:
                                 snp = position + ":" + C2P[nucl_count]
@@ -587,11 +610,11 @@ if __name__ == '__main__':
         help='Optional genes file')
     parser.add_argument("-c", "--min_coverage", action="store", default=5, \
         help='Minimum SNV coverage')
-    parser.add_argument("-s", "--min_snp", action="store", default=3, \
-        help='Absolute minimum number of reads to confirm a SNV (both this AND -f must be true)')
+    parser.add_argument("-s", "--min_snp", action="store", default=10, \
+        help='Absolute minimum number of reads connecting two SNPs to calculate LD between them. ')
 
     parser.add_argument("-f", "--min_freq", action="store", default=0.05, \
-        help='Minimum SNP frequency to confirm a SNV (both this AND -s must be true)')
+        help='Minimum SNP frequency to confirm a SNV (both this AND the 0.001\% FDR snp count cutoff must be true).')
 
     parser.add_argument("-l", "--level", action="store", default=None, \
         help='Minimum percent identity of read pairs to consensus to use the reads - default is to run at 90, 92, 94, 96, 98, and 100')
