@@ -390,7 +390,7 @@ class SNVdata:
         self.r2linkage_table = pd.DataFrame(r2linkage_table)
 
 
-    def run_strain_profiler(self, bam, min_coverage = 5, min_snp = 3, min_freq = 0.05, filter_cutoff = 0, log= None):
+    def run_strain_profiler(self, bam, min_coverage = 5, min_freq = 0.05, filter_cutoff = 0, log= None):
         ''' 
         Main class for finding SNVs and generating data profile for a genome.
         '''
@@ -561,7 +561,7 @@ def strain_pipeline(args, filter_cutoff):
         log_file.close()
 
     strains.get_scaffold_positions(args.genes, args.fasta)
-    strains.run_strain_profiler(args.bam, min_coverage = int(args.min_coverage), min_snp = int(args.min_snp), min_freq=float(args.min_freq), filter_cutoff = filter_cutoff, log=args.log)
+    strains.run_strain_profiler(args.bam, min_coverage = int(args.min_coverage), min_freq=float(args.min_freq), filter_cutoff = filter_cutoff, log=args.log)
 
     if args.log:
         log_file = open(args.log, 'a+')
