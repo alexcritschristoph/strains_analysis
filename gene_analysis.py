@@ -154,7 +154,7 @@ def collate_gene_clonalities(dir, prefix, suffix, gene_file):
 
     i = 0
     for fn in glob.glob(dir.rstrip("/") + "/" + prefix + "*" + suffix + ".clonal"):
-        sample = fn.split(":_")[1].replace("_" + suffix + ".clonal", "")  ### NOTE: CHANGE THIS LINE DEPENDING ON YOUR FILE NAMING SCHEME
+        sample = fn.split(":")[1].replace("_" + suffix + ".clonal", "")  ### NOTE: CHANGE THIS LINE DEPENDING ON YOUR FILE NAMING SCHEME
         if i == 0:
             gene_table = calculate_gene_clonality(gene_index, fn, sample)
             i += 1

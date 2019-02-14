@@ -3,7 +3,7 @@ import glob
 
 sys.path.append('/data6/Angelo/alexcc/AngeloStrainsPaper/strainrep/strains_analysis/')
 import strainRep2
-null_model = strainRep2.generate_snp_model('./combined_null1000000.txt')
+null_snp_model = strainRep2.generate_snp_model('./combined_null1000000.txt')
 
 # first parameter is directory of .data files
 files = sys.argv[1]
@@ -31,11 +31,11 @@ counts = defaultdict(lambda: defaultdict(list))
 
 samples = []
 ## Calculate the combined counts
+print(files + genome + "*" + level + ".data")
 for fn in glob.glob(files + genome + "*" + level + ".data"):
-
+    sample = fn.split(":")[1].split("_" + level)[0]
     if genome + ":" + sample in above_cutoff:
-        samples.append()
-        sample = fn.split(":")[1].split("_" + level)[0]
+        samples.append(sample)
         print(sample)
 
         s = strainRep2.SNVdata()
@@ -56,27 +56,33 @@ for fn in glob.glob(files + genome + "*" + level + ".data"):
 
 print("Calling SNPs")
 
-f = open('')
 snp_sites = []
-print("Contig,Position", end="")
-for sample in samples:
-    print("," + sample + "-A", end="")
-    print("," + sample + "-C", end="")
-    print("," + sample + "-G", end="")
-    print("," + sample + "-T", end="")
 
-print("")
+f = open(genome + ".freqs", "w+")
+
+f.write("Contig,Position")
+for sample in samples:
+    f.write("," + sample + "-A")
+    f.write("," + sample + "-C")
+    f.write("," + sample + "-G")
+    f.write("," + sample + "-T")
+
+f.write("\n")
+
 for pos in counts['all']:
     consensus = strainRep2.call_snv_site(counts['all'][pos], null_snp_model, min_cov = 20, min_freq = 0.05)
     if consensus:
-        print("")
         #there is a SNP here
-        print(pos.split(":")[0], end='')
-        print("," + pos.split(":")[1], end='')
+        f.write("_".join(pos.split("_")[:-1]))
+        f.write("," + pos.split("_")[-1])
 
         for sample in samples:
+            if len(counts[genome + ":" + sample][pos]) == 0:
+                counts[genome + ":" + sample][pos] = [0,0,0,0]
 
-            print("," + str(counts[genome + sample][0]), end="") #A
-            print("," + str(counts[genome + sample][1]), end="") #C
-            print("," + str(counts[genome + sample][3]), end="") #G
-            print("," + str(counts[genome + sample][2]), end="") #T (note reversal bc counts is ACTG)
+            f.write("," + str(counts[genome + ":" + sample][pos][0])) #A
+            f.write("," + str(counts[genome + ":" + sample][pos][1])) #C
+            f.write("," + str(counts[genome + ":" + sample][pos][3])) #G
+            f.write("," + str(counts[genome + ":" + sample][pos][2])) #T (note reversal bc counts is ACTG)
+        f.write("\n")
+f.close()
