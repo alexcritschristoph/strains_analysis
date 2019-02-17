@@ -79,13 +79,17 @@ for pos in counts['all']:
     consensus = strainRep2.call_snv_site(counts['all'][pos], null_snp_model, min_cov = 20, min_freq = 0.05)
     if consensus:
 
+
         #freq is always bi-allelic 
-        allele_A = C2P[counts.index(sorted(counts)[-1])]
-        allele_a = C2P[counts.index(sorted(counts)[-2])]
-        i + 1
-        #Normal output
-        f2.write(str(i) + "\t" +pos + "\t" + pos + ":" + allele_A + "\t" + str(sorted(counts)[-1]) + "\t" + sample + "\n")
-        f2.write(str(i) + "\t" +pos + "\t" + pos + ":" + allele_a + "\t" + str(sorted(counts)[-2]) + "\t" + sample + "\n")
+
+        for sample in samples:
+            local_counts = counts[genome + ":" + sample][pos]
+            allele_A = C2P[local_counts.index(sorted(local_counts)[-1])]
+            allele_a = C2P[local_counts.index(sorted(local_counts)[-2])]
+            i + 1
+            #Normal output
+            f2.write(str(i) + "\t" +pos + "\t" + pos + ":" + allele_A + "\t" + str(sorted(local_counts)[-1]) + "\t" + sample + "\n")
+            f2.write(str(i) + "\t" +pos + "\t" + pos + ":" + allele_a + "\t" + str(sorted(local_counts)[-2]) + "\t" + sample + "\n")
 
         #DESMAN output
         f.write("_".join(pos.split("_")[:-1]))
