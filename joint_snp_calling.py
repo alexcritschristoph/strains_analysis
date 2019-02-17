@@ -59,6 +59,9 @@ print("Calling SNPs")
 snp_sites = []
 
 f = open(genome + ".freqs", "w+")
+f2 = open(genome + ".freq", "w+")
+
+f2.write("\tPosition\tSNV\tfreq\tSample\n")
 
 f.write("Contig,Position")
 for sample in samples:
@@ -69,10 +72,22 @@ for sample in samples:
 
 f.write("\n")
 
+i = 0 
+C2P = {0:'A', 1:'C', 2:'T', 3:'G'}
+
 for pos in counts['all']:
     consensus = strainRep2.call_snv_site(counts['all'][pos], null_snp_model, min_cov = 20, min_freq = 0.05)
     if consensus:
-        #there is a SNP here
+
+        #freq is always bi-allelic 
+        allele_A = C2P[counts.index(sorted(counts)[-1])]
+        allele_a = C2P[counts.index(sorted(counts)[-2])]
+        i + 1
+        #Normal output
+        f2.write(str(i) + "\t" +pos + "\t" + pos + ":" + allele_A + "\t" + str(sorted(counts)[-1]) + "\t" + sample + "\n")
+        f2.write(str(i) + "\t" +pos + "\t" + pos + ":" + allele_a + "\t" + str(sorted(counts)[-2]) + "\t" + sample + "\n")
+
+        #DESMAN output
         f.write("_".join(pos.split("_")[:-1]))
         f.write("," + pos.split("_")[-1])
 
@@ -86,3 +101,4 @@ for pos in counts['all']:
             f.write("," + str(counts[genome + ":" + sample][pos][2])) #T (note reversal bc counts is ACTG)
         f.write("\n")
 f.close()
+f2.close()
