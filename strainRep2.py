@@ -6,7 +6,7 @@ Possible names for this program:
 * blockStrain - not a legit acronym
 * destrain - not a legit acronym
 * instrain - not a legit acronym
-* MIPS - metagenome interference of population structure - a legt acronym
+* metaIPD - metagenome interference of population structure - a legt acronym
 '''
 
 # Get the version
@@ -614,7 +614,7 @@ if __name__ == '__main__':
         help='Absolute minimum number of reads connecting two SNPs to calculate LD between them. ')
 
     parser.add_argument("-f", "--min_freq", action="store", default=0.05, \
-        help='Minimum SNP frequency to confirm a SNV (both this AND the 0.001\% FDR snp count cutoff must be true).')
+        help='Minimum SNP frequency to confirm a SNV (both this AND the 0.001 percent FDR snp count cutoff must be true).')
 
     parser.add_argument("-l", "--level", action="store", default=None, \
         help='Minimum percent identity of read pairs to consensus to use the reads - default is to run at 90, 92, 94, 96, 98, and 100')
