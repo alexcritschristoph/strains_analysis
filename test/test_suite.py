@@ -21,13 +21,13 @@ def load_random_test_dir():
     return loc
 
 def get_script_loc(script):
-    if script == 'strainRepOneSample.py':
+    if script == 'strainRep2.py':
         return os.path.join(str(os.getcwd()), \
-            '../strainRepOneSample.py')
+            '../strainRep2.py')
 
 class test_strains():
     def setUp(self):
-        self.script = get_script_loc('strainRepOneSample.py')
+        self.script = get_script_loc('strainRep2.py')
 
         self.test_dir = load_random_test_dir()
 
@@ -57,13 +57,13 @@ class test_strains():
         base = self.test_dir + 'test'
 
         # Run program
-        cmd = "{0} {1} {2} -o {3}".format(self.script, self.sorted_bam, \
+        cmd = "{0} {1} {2} -o {3} -l 0.98".format(self.script, self.sorted_bam, \
             self.fasta, base)
         print(cmd)
         call(cmd, shell=True)
 
         # Make sure it produced output
-        assert len(glob.glob(base + '*')) == 3
+        assert len(glob.glob(base + '*')) == 4
 
 if __name__ == '__main__':
     #test_strainProfiler_breadth().run()

@@ -13,6 +13,7 @@ Possible names for this program:
 from _version import __version__
 
 # Import
+import os
 import csv
 import sys
 import math
@@ -83,7 +84,7 @@ def generate_snp_model(model_file):
             if float(count) < 1e-6:
                 model[int(coverage)] = i
                 break
-    
+
     model.default_factory = lambda:max(model.values())
 
     return model
@@ -96,7 +97,7 @@ def call_snv_site(counts, null_model, min_cov=5, min_freq=0.05):
     P2C = {'A':0, 'C':1, 'T':2, 'G':3}
     C2P = {0:'A', 1:'C', 2:'T', 3:'G'}
     total =  sum(counts)
-    
+
     if total >= min_cov:
         i = 0
         for c in counts:
@@ -148,7 +149,7 @@ class SNVdata:
         self.bam = ""
         self.results = False
         self.output = None
-        self.testing = False        
+        self.testing = False
         self.positions = []
         self.fasta_length = 0
 
@@ -156,7 +157,7 @@ class SNVdata:
         # Data structures
         self.snv_table = None         #
         self.read_to_snvs = None      #
-        self.windows_to_snvs = None   # 
+        self.windows_to_snvs = None   #
         self.all_counts = None        # All counts of AGCT for each position
         self.snv_counts = None        # Counts of AGCT for each SNV position
         self.clonality_table = None         # Dict of clonality histograms (lists) by window
@@ -171,7 +172,7 @@ class SNVdata:
         self.alpha_snvs = None
 
 
-        
+
 
     def save(self, size=0):
         if self.results:
@@ -234,7 +235,7 @@ class SNVdata:
         pass
 
     def calc_linkage_network(self):
-        ''' Calculates the SNV linkage network - saves it as a dictionary of edges in self.snv_net. 
+        ''' Calculates the SNV linkage network - saves it as a dictionary of edges in self.snv_net.
         Writes it out to a file, genome.net for reading in through other programs like node2vec
         '''
         G=nx.Graph()
@@ -252,7 +253,7 @@ class SNVdata:
                         G_pos.add_edge(pair[0].split(":")[0], pair[1].split(":")[0])
 
         print(str("Of " + str(self.total_snv_sites) + " SNP-sites, there were " + str(len(G_pos)) + " SNPs that could be linked to at least one other SNP."))
-        print("The average SNP was linked to " + str(int(np.mean([x[1] for x in list(G_pos.degree())]))) + " other SNPs.")
+        print("The average SNP was linked to " + str(int(np.mean([int(x[1]) for x in list(G_pos.degree())]))) + " other SNPs.")
         self.snv_graph = G
         self.position_graph = G_pos
 
@@ -289,7 +290,7 @@ class SNVdata:
             countab = self.snv_graph[allele_a[0]][allele_b[0]]['weight']
 
         total = countAB + countAb + countaB + countab
-        
+
         #Requires at least min_snp
         if total > min_snp:
 
@@ -313,9 +314,9 @@ class SNVdata:
             freq_aB = float(countaB) / total
             freq_ab = float(countab) / total
 
-            freq_A = freq_AB + freq_Ab 
-            freq_a = freq_ab + freq_aB 
-            freq_B = freq_AB + freq_aB 
+            freq_A = freq_AB + freq_Ab
+            freq_a = freq_ab + freq_aB
+            freq_B = freq_AB + freq_aB
             freq_b = freq_ab + freq_Ab
 
             linkD = freq_AB - freq_A * freq_B
@@ -361,9 +362,9 @@ class SNVdata:
                 ld_result = self.calc_ld(snp_a, snp_b, min_snp)
                 if ld_result:
                     r2_spectrum.append(ld_result)
-            
+
             r2_total[window_name] = r2_spectrum
-        
+
         # Create r2 linkage table
         r2linkage_table = defaultdict(list)
 
@@ -391,7 +392,7 @@ class SNVdata:
 
 
     def run_strain_profiler(self, bam, min_coverage = 5, min_freq = 0.05, filter_cutoff = 0, log= None):
-        ''' 
+        '''
         Main class for finding SNVs and generating data profile for a genome.
         '''
 
@@ -409,13 +410,14 @@ class SNVdata:
         snvs_frequencies = defaultdict(int)
         clonality_by_window = defaultdict(list)
         windows_to_snvs = defaultdict(list)
-        
+
         all_counts = {}
         snv_counts = {}
         coverages = {}
 
-        # read null model 
-        null_snp_model = generate_snp_model('./combined_null1000000.txt')
+        # read null model
+        null_loc = os.path.dirname(__file__) + '/helper_files/combined_null1000000.txt'
+        null_snp_model = generate_snp_model(null_loc)
 
         ## Start reading BAM
         samfile = pysam.AlignmentFile(bam)
@@ -429,13 +431,13 @@ class SNVdata:
 
         ### START SNP FINDING
 
-        ## Start looping through each region  
+        ## Start looping through each region
         for gene in tqdm(self.positions, desc='Finding SNVs ...'):
             scaff = gene[0]
             window = gene[0] + ":" + str(gene[1]) + ":" + str(gene[2])
             for pileupcolumn in samfile.pileup(scaff, gene[1], gene[2], truncate = True, stepper = 'samtools', compute_baq= True, ignore_orphans = True, ignore_overlaps = True,  min_base_quality = 30):
                 ## Step 1: Are there any reads at this position?
-               
+
                 position = scaff + "_" + str(pileupcolumn.pos)
                 counts = _get_base_counts(pileupcolumn, filtered_reads = subset_reads)
 
@@ -443,7 +445,7 @@ class SNVdata:
                 # Yes there were reads at this position
                 if counts:
                     all_counts[position] = counts
-                    
+
                     if sum(counts) > min_coverage:
                         total_positions += 1
                         pos_clonality = calculate_clonality(counts)
@@ -485,7 +487,7 @@ class SNVdata:
                                 snp = position + ":" + C2P[nucl_count]
                                 snvs_frequencies[snp] = [freq, window]
 
-                        nucl_count += 1 
+                        nucl_count += 1
 
         #### SNP FINDING COMPLETE
         # Create SNV frequency table
