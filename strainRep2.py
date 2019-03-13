@@ -435,7 +435,7 @@ class SNVdata:
         for gene in tqdm(self.positions, desc='Finding SNVs ...'):
             scaff = gene[0]
             window = gene[0] + ":" + str(gene[1]) + ":" + str(gene[2])
-            for pileupcolumn in samfile.pileup(scaff, gene[1], gene[2], truncate = True, stepper = 'samtools', compute_baq= True, ignore_orphans = True, ignore_overlaps = True,  min_base_quality = 30):
+            for pileupcolumn in samfile.pileup(scaff, gene[1], gene[2], truncate = True, stepper = 'all', compute_baq= True, ignore_orphans = True, ignore_overlaps = True,  min_base_quality = 30):
                 ## Step 1: Are there any reads at this position?
 
                 position = scaff + "_" + str(pileupcolumn.pos)
