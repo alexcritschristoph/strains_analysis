@@ -1,6 +1,9 @@
 # strains_analysis
 Code for analyzing population genomics in genome-resolved metagenomes
 
+**NOTE: The latest and maintained version of this software is available at:**
+https://github.com/MrOlm/inStrain
+
 Requires: pysam, tqdm, BioPython.
 
 ### Usage
